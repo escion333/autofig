@@ -55,7 +55,7 @@ To develop, update your mcp config to direct to your local directory.
   "mcpServers": {
     "TalkToFigma": {
       "command": "bun",
-      "args": ["/path-to-repo/src/talk_to_figma_mcp/sever.ts"]
+      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
     }
   }
 }
