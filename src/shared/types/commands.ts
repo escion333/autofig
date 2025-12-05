@@ -30,6 +30,9 @@ export type FigmaCommand =
   // Organization
   | 'group_nodes'
   | 'ungroup_node'
+  // Variables (Design Tokens)
+  | 'get_local_variable_collections'
+  | 'get_local_variables'
   // Typography
   | 'get_available_fonts'
   | 'load_font'
@@ -86,6 +89,12 @@ export interface CommandParams {
   get_nodes_info: { nodeIds: string[] };
   set_focus: { nodeId: string };
   set_selections: { nodeIds: string[] };
+
+  // Variables (Design Tokens)
+  get_local_variable_collections: Record<string, never>;
+  get_local_variables: {
+    collectionId?: string;
+  };
 
   // Element Creation
   create_rectangle: {
@@ -432,5 +441,35 @@ export interface AnnotationInfo {
   nodeName: string;
   label: string;
   labelText: string;
+}
+
+// ============================================================================
+// Variable Types (Design Tokens)
+// ============================================================================
+
+export interface VariableModeInfo {
+  modeId: string;
+  name: string;
+}
+
+export interface VariableCollectionInfo {
+  id: string;
+  name: string;
+  modes: VariableModeInfo[];
+  defaultModeId: string;
+  variableIds: string[];
+  hiddenFromPublishing: boolean;
+}
+
+export interface VariableInfo {
+  id: string;
+  name: string;
+  key: string;
+  variableCollectionId: string;
+  resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
+  valuesByMode: Record<string, unknown>;
+  hiddenFromPublishing: boolean;
+  scopes: string[];
+  codeSyntax: Record<string, string>;
 }
 

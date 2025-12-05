@@ -23,15 +23,20 @@
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "dev:plugin": "bun run build:plugin:watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "pub:release": "bun run build && npm publish"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.100.2",
     "@types/bun": "latest",
+    "@vitest/coverage-v8": "^4.0.15",
     "bun-types": "^1.2.5",
     "esbuild": "^0.24.0",
     "tsup": "^8.4.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.15"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.13.1",

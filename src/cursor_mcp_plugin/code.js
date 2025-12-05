@@ -1026,6 +1026,76 @@
   }
   __name(ungroupNode, "ungroupNode");
 
+  // src/figma-plugin/handlers/variables.ts
+  async function getLocalVariableCollections() {
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const collectionInfos = collections.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      modes: collection.modes.map((mode) => ({
+        modeId: mode.modeId,
+        name: mode.name
+      })),
+      defaultModeId: collection.defaultModeId,
+      variableIds: collection.variableIds,
+      hiddenFromPublishing: collection.hiddenFromPublishing
+    }));
+    return {
+      collections: collectionInfos,
+      count: collectionInfos.length
+    };
+  }
+  __name(getLocalVariableCollections, "getLocalVariableCollections");
+  async function getLocalVariables(params) {
+    const { collectionId } = params || {};
+    const variables = await figma.variables.getLocalVariablesAsync();
+    const filteredVariables = collectionId ? variables.filter((v) => v.variableCollectionId === collectionId) : variables;
+    const variableInfos = filteredVariables.map((variable) => {
+      const valuesByMode = {};
+      for (const [modeId, value] of Object.entries(variable.valuesByMode)) {
+        if (isVariableAlias(value)) {
+          valuesByMode[modeId] = {
+            type: "VARIABLE_ALIAS",
+            id: value.id
+          };
+        } else if (isRGBA(value)) {
+          valuesByMode[modeId] = {
+            r: value.r,
+            g: value.g,
+            b: value.b,
+            a: value.a
+          };
+        } else {
+          valuesByMode[modeId] = value;
+        }
+      }
+      return {
+        id: variable.id,
+        name: variable.name,
+        key: variable.key,
+        variableCollectionId: variable.variableCollectionId,
+        resolvedType: variable.resolvedType,
+        valuesByMode,
+        hiddenFromPublishing: variable.hiddenFromPublishing,
+        scopes: [...variable.scopes],
+        codeSyntax: { ...variable.codeSyntax }
+      };
+    });
+    return {
+      variables: variableInfos,
+      count: variableInfos.length
+    };
+  }
+  __name(getLocalVariables, "getLocalVariables");
+  function isVariableAlias(value) {
+    return typeof value === "object" && value !== null && "type" in value && value.type === "VARIABLE_ALIAS";
+  }
+  __name(isVariableAlias, "isVariableAlias");
+  function isRGBA(value) {
+    return typeof value === "object" && value !== null && "r" in value && "g" in value && "b" in value;
+  }
+  __name(isRGBA, "isRGBA");
+
   // src/figma-plugin/handlers/typography.ts
   async function getAvailableFonts(params) {
     const { filter } = params || {};
@@ -2318,6 +2388,11 @@
         return await groupNodes(params);
       case "ungroup_node":
         return await ungroupNode(params);
+      // Variables (Design Tokens)
+      case "get_local_variable_collections":
+        return await getLocalVariableCollections();
+      case "get_local_variables":
+        return await getLocalVariables(params);
       // Typography
       case "get_available_fonts":
         return await getAvailableFonts(params);

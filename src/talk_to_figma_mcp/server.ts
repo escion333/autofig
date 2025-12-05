@@ -1023,6 +1023,70 @@ server.tool(
   }
 );
 
+// =============================================================================
+// Variables API (Design Tokens)
+// =============================================================================
+
+// Get Local Variable Collections Tool
+server.tool(
+  "get_local_variable_collections",
+  "Get all local variable collections from the Figma document. Variable collections contain design tokens (colors, numbers, strings, booleans) organized by modes (e.g., light/dark themes). Returns collection IDs, names, modes, and variable IDs.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_local_variable_collections");
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting variable collections: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Local Variables Tool
+server.tool(
+  "get_local_variables",
+  "Get all local variables (design tokens) from the Figma document. Variables can be COLOR, FLOAT, STRING, or BOOLEAN types. Optionally filter by collection ID. Returns variable details including values for each mode.",
+  {
+    collectionId: z.string().optional().describe("Optional collection ID to filter variables by a specific collection"),
+  },
+  async ({ collectionId }: { collectionId?: string }) => {
+    try {
+      const result = await sendCommandToFigma("get_local_variables", { collectionId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Get Styles Tool
 server.tool(
   "get_styles",

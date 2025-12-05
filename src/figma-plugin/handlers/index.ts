@@ -24,6 +24,9 @@ import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './sty
 // Organization
 import { groupNodes, ungroupNode } from './organization';
 
+// Variables (Design Tokens)
+import { getLocalVariableCollections, getLocalVariables } from './variables';
+
 // Typography
 import {
   getAvailableFonts,
@@ -113,6 +116,12 @@ export async function handleCommand<T extends FigmaCommand>(
       return await groupNodes(params as CommandParams['group_nodes']);
     case 'ungroup_node':
       return await ungroupNode(params as CommandParams['ungroup_node']);
+
+    // Variables (Design Tokens)
+    case 'get_local_variable_collections':
+      return await getLocalVariableCollections();
+    case 'get_local_variables':
+      return await getLocalVariables(params as CommandParams['get_local_variables']);
 
     // Typography
     case 'get_available_fonts':

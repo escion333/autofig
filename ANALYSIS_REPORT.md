@@ -98,36 +98,45 @@ This report analyzes the current state of the `autofig` codebase and identifies 
 ### ✅ Export (1 tool)
 - `export_node_as_image` - PNG/JPG/SVG/PDF export
 
+### ✅ Variables API (2 tools) - NEW (Read-Only)
+- `get_local_variable_collections` - List all variable collections with modes
+- `get_local_variables` - Get variables with optional collection filter
+
 ---
 
 ## 3. Missing Figma Features (HIGH PRIORITY)
 
-### 🔴 Variables & Design Tokens (CRITICAL for Design Systems)
+### 🟡 Variables & Design Tokens (CRITICAL for Design Systems) - PARTIALLY IMPLEMENTED
 
-**Current State:** No support for Figma Variables
+**Current State:** Read-only support for Figma Variables ✅
 
-**Why It Matters:** Variables are the foundation of modern design systems. Without them, AI agents cannot:
-- Create/modify color tokens
-- Set up spacing scales
-- Define typography scales
-- Create responsive designs with modes (light/dark, device sizes)
-
-**Recommended Tools:**
+**Implemented Tools:**
 ```typescript
-// Variable Collections
-get_variable_collections()
+// Variable Collections (READ-ONLY) ✅
+get_local_variable_collections()  // List all collections with modes
+get_local_variables(collectionId?) // Get variables, filter by collection
+
+// Variable Types supported: COLOR, FLOAT, STRING, BOOLEAN
+```
+
+**Still Needed (Write Operations):**
+```typescript
+// Variable Management
 create_variable_collection(name, modes)
-get_variables(collectionId?)
 create_variable(collectionId, name, type, values)
 set_variable_value(variableId, modeId, value)
+delete_variable(variableId)
 
 // Variable Binding
 bind_variable_to_node(nodeId, property, variableId)
 get_bound_variables(nodeId)
 unbind_variable(nodeId, property)
-
-// Variable Types: COLOR, FLOAT, STRING, BOOLEAN
 ```
+
+**Why Write Operations Matter:** AI agents can now **read** design tokens but cannot yet:
+- Create new color/spacing/typography tokens
+- Update token values for different modes
+- Bind tokens to design elements
 
 ### 🔴 Component Creation & Management (CRITICAL for Design Systems)
 
@@ -469,7 +478,14 @@ src/
 ## 10. Implementation Roadmap
 
 ### Phase 1: Foundation (Weeks 1-2)
-- [ ] Add Variables API support (collections, variables, binding)
+- [x] Add Variables API support (read-only: collections, variables) ✅ PARTIAL
+  - `get_local_variable_collections` - List all variable collections with modes
+  - `get_local_variables` - Get all variables, optionally filtered by collection
+  - [ ] `create_variable_collection` - Create new collection (TODO)
+  - [ ] `create_variable` - Create variable in collection (TODO)
+  - [ ] `set_variable_value` - Update variable value (TODO)
+  - [ ] `bind_variable` - Bind variable to node property (TODO)
+  - [ ] `unbind_variable` - Remove variable binding (TODO)
 - [ ] Add Component creation (`create_component`, `create_component_set`)
 - [x] Add Typography tools (fonts, text styles) ✅ DONE
 - [x] Refactor to TypeScript plugin ✅ DONE
@@ -512,13 +528,22 @@ These improvements can be made immediately with minimal effort:
 
 The current implementation provides a solid foundation but misses critical features needed for professional design system work. The top priorities are:
 
-1. **Variables API** - Essential for design tokens
+1. ~~**Variables API** - Essential for design tokens~~ ✅ PARTIALLY IMPLEMENTED (read-only)
 2. **Component Creation** - Essential for design systems
 3. ~~**Typography System** - Essential for UI design~~ ✅ IMPLEMENTED
 4. **Style Management** - Paint styles still needed (text styles done)
 
+**Recent Progress:**
+- ✅ Variables API (read-only): `get_local_variable_collections`, `get_local_variables`
+- ✅ Test suite added with Vitest for Variables API (12 tests)
+
+**Immediate Next Steps:**
+- Add write operations for Variables API (create, update, bind)
+- Implement Component creation tools
+
 With these additions, AI agents would be capable of:
-- Creating complete design systems from scratch
+- ✅ Reading existing design tokens and collections
+- Creating complete design systems from scratch (needs write operations)
 - Building component libraries with variants
 - Applying consistent styling across designs
 - Managing design tokens effectively
@@ -528,4 +553,5 @@ With these additions, AI agents would be capable of:
 
 *Report generated: December 2024*
 *Codebase version: 0.3.5*
+*Last updated: Variables API read-only tools added*
 
