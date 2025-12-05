@@ -16,10 +16,23 @@ import {
 } from './document';
 
 // Element Creation
-import { createRectangle, createFrame, createText } from './creation';
+import { createRectangle, createFrame, createText, createEllipse } from './creation';
 
 // Styling
-import { setFillColor, setStrokeColor, setCornerRadius } from './styling';
+import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './styling';
+
+// Organization
+import { groupNodes, ungroupNode } from './organization';
+
+// Typography
+import {
+  getAvailableFonts,
+  loadFont,
+  getTextStyles,
+  createTextStyle,
+  applyTextStyle,
+  setTextProperties,
+} from './typography';
 
 // Layout
 import { moveNode, resizeNode, deleteNode, deleteMultipleNodes, cloneNode } from './layout';
@@ -82,6 +95,8 @@ export async function handleCommand<T extends FigmaCommand>(
       return await createFrame(params as CommandParams['create_frame']);
     case 'create_text':
       return await createText(params as CommandParams['create_text']);
+    case 'create_ellipse':
+      return await createEllipse(params as CommandParams['create_ellipse']);
 
     // Styling
     case 'set_fill_color':
@@ -90,6 +105,28 @@ export async function handleCommand<T extends FigmaCommand>(
       return await setStrokeColor(params as CommandParams['set_stroke_color']);
     case 'set_corner_radius':
       return await setCornerRadius(params as CommandParams['set_corner_radius']);
+    case 'set_opacity':
+      return await setOpacity(params as CommandParams['set_opacity']);
+
+    // Organization
+    case 'group_nodes':
+      return await groupNodes(params as CommandParams['group_nodes']);
+    case 'ungroup_node':
+      return await ungroupNode(params as CommandParams['ungroup_node']);
+
+    // Typography
+    case 'get_available_fonts':
+      return await getAvailableFonts(params as CommandParams['get_available_fonts']);
+    case 'load_font':
+      return await loadFont(params as CommandParams['load_font']);
+    case 'get_text_styles':
+      return await getTextStyles();
+    case 'create_text_style':
+      return await createTextStyle(params as CommandParams['create_text_style']);
+    case 'apply_text_style':
+      return await applyTextStyle(params as CommandParams['apply_text_style']);
+    case 'set_text_properties':
+      return await setTextProperties(params as CommandParams['set_text_properties']);
 
     // Layout
     case 'move_node':

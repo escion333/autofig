@@ -99,9 +99,12 @@ export function getFontStyleFromWeight(weight: number): string {
  * Get a node by ID with proper error handling
  */
 export async function getNodeById(nodeId: string): Promise<SceneNode> {
+  if (!nodeId) {
+    throw new Error('Node ID is required');
+  }
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
+    throw new Error(`Node not found with ID: ${nodeId}. The node may have been deleted or the ID is invalid.`);
   }
   return node as SceneNode;
 }
@@ -113,10 +116,10 @@ export async function getContainerNode(parentId?: string): Promise<BaseNode & Ch
   if (parentId) {
     const parentNode = await figma.getNodeByIdAsync(parentId);
     if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
+      throw new Error(`Parent node not found with ID: ${parentId}. The node may have been deleted or the ID is invalid.`);
     }
     if (!('appendChild' in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
+      throw new Error(`Parent node "${(parentNode as SceneNode).name}" (${parentNode.type}) does not support children: ${parentId}`);
     }
     return parentNode as BaseNode & ChildrenMixin;
   }

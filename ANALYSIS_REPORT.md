@@ -38,21 +38,25 @@ This report analyzes the current state of the `autofig` codebase and identifies 
 - `set_focus` - Focus on node
 - `set_selections` - Multi-select nodes
 
-### ✅ Element Creation (3 tools)
+### ✅ Element Creation (4 tools)
 - `create_rectangle` - Basic rectangles
 - `create_frame` - Frames with auto-layout
-- `create_text` - Text nodes (Inter font only)
+- `create_text` - Text nodes (supports custom fonts)
+- `create_ellipse` - Circles and ovals
 
-### ✅ Styling (4 tools)
+### ✅ Styling (5 tools)
 - `set_fill_color` - Solid fill colors
 - `set_stroke_color` - Stroke colors
 - `set_corner_radius` - Border radius
+- `set_opacity` - Node opacity control
 
-### ✅ Layout & Organization (5 tools)
+### ✅ Layout & Organization (7 tools)
 - `move_node` - Reposition nodes
 - `resize_node` - Change dimensions
 - `delete_node` / `delete_multiple_nodes` - Remove nodes
 - `clone_node` - Duplicate nodes
+- `group_nodes` - Group multiple nodes together
+- `ungroup_node` - Ungroup a group node
 
 ### ✅ Auto Layout (5 tools)
 - `set_layout_mode` - Enable/configure auto-layout
@@ -71,6 +75,14 @@ This report analyzes the current state of the `autofig` codebase and identifies 
 - `set_text_content` - Update text
 - `scan_text_nodes` - Find all text nodes
 - `set_multiple_text_contents` - Batch text updates
+
+### ✅ Typography System (6 tools) - NEW
+- `get_available_fonts` - List all available fonts
+- `load_font` - Load a font for use
+- `get_text_styles` - Get local text styles
+- `create_text_style` - Create reusable text style
+- `apply_text_style` - Apply style to text node
+- `set_text_properties` - Fine-grained text formatting
 
 ### ✅ Annotations (4 tools)
 - `get_annotations` - Read annotations
@@ -137,13 +149,11 @@ add_component_property(componentId, name, type, defaultValue)
 create_variant(componentSetId, variantProperties)
 ```
 
-### 🔴 Typography System (HIGH PRIORITY)
+### ✅ Typography System (IMPLEMENTED)
 
-**Current State:** Text creation limited to Inter font, no text styles
+**Current State:** Full typography support with custom fonts and text styles
 
-**Why It Matters:** Typography is ~80% of UI design
-
-**Recommended Tools:**
+**What's Available:**
 ```typescript
 // Font Management
 get_available_fonts()
@@ -461,8 +471,8 @@ src/
 ### Phase 1: Foundation (Weeks 1-2)
 - [ ] Add Variables API support (collections, variables, binding)
 - [ ] Add Component creation (`create_component`, `create_component_set`)
-- [ ] Add Typography tools (fonts, text styles)
-- [ ] Refactor to TypeScript plugin
+- [x] Add Typography tools (fonts, text styles) ✅ DONE
+- [x] Refactor to TypeScript plugin ✅ DONE
 
 ### Phase 2: Design System Features (Weeks 3-4)
 - [ ] Add Color/Paint style creation
@@ -504,8 +514,8 @@ The current implementation provides a solid foundation but misses critical featu
 
 1. **Variables API** - Essential for design tokens
 2. **Component Creation** - Essential for design systems
-3. **Typography System** - Essential for UI design
-4. **Style Management** - Essential for consistency
+3. ~~**Typography System** - Essential for UI design~~ ✅ IMPLEMENTED
+4. **Style Management** - Paint styles still needed (text styles done)
 
 With these additions, AI agents would be capable of:
 - Creating complete design systems from scratch

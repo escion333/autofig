@@ -20,7 +20,7 @@ export async function setFillColor(params: CommandParams['set_fill_color']): Pro
   }
 
   const node = await getNodeById(nodeId);
-  assertNodeCapability(node, 'fills', `Node does not support fills: ${nodeId}`);
+  assertNodeCapability(node, 'fills', `Node "${node.name}" (${node.type}) does not support fills: ${nodeId}`);
 
   const paintStyle: SolidPaint = {
     type: 'SOLID',
@@ -56,7 +56,7 @@ export async function setStrokeColor(params: CommandParams['set_stroke_color']):
   }
 
   const node = await getNodeById(nodeId);
-  assertNodeCapability(node, 'strokes', `Node does not support strokes: ${nodeId}`);
+  assertNodeCapability(node, 'strokes', `Node "${node.name}" (${node.type}) does not support strokes: ${nodeId}`);
 
   const paintStyle: SolidPaint = {
     type: 'SOLID',
@@ -106,7 +106,7 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
   }
 
   const node = await getNodeById(nodeId);
-  assertNodeCapability(node, 'cornerRadius', `Node does not support corner radius: ${nodeId}`);
+  assertNodeCapability(node, 'cornerRadius', `Node "${node.name}" (${node.type}) does not support corner radius: ${nodeId}`);
 
   const cornerNode = node as RectangleNode;
 
@@ -135,6 +135,35 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
     topRightRadius: 'topRightRadius' in cornerNode ? cornerNode.topRightRadius : undefined,
     bottomRightRadius: 'bottomRightRadius' in cornerNode ? cornerNode.bottomRightRadius : undefined,
     bottomLeftRadius: 'bottomLeftRadius' in cornerNode ? cornerNode.bottomLeftRadius : undefined,
+  };
+}
+
+/**
+ * Set opacity on a node
+ */
+export async function setOpacity(params: CommandParams['set_opacity']): Promise<NodeResult> {
+  const { nodeId, opacity } = params || {};
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  if (opacity === undefined || opacity === null) {
+    throw new Error('Missing opacity parameter');
+  }
+
+  // Clamp opacity to valid range
+  const clampedOpacity = Math.max(0, Math.min(1, opacity));
+
+  const node = await getNodeById(nodeId);
+  assertNodeCapability(node, 'opacity', `Node "${node.name}" does not support opacity: ${nodeId}`);
+
+  (node as BlendMixin).opacity = clampedOpacity;
+
+  return {
+    id: node.id,
+    name: node.name,
+    opacity: clampedOpacity,
   };
 }
 

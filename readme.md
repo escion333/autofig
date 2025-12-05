@@ -147,7 +147,8 @@ The MCP server provides the following tools for interacting with Figma:
 
 - `create_rectangle` - Create a new rectangle with position, size, and optional name
 - `create_frame` - Create a new frame with position, size, and optional name
-- `create_text` - Create a new text node with customizable font properties
+- `create_text` - Create a new text node with customizable font properties (supports any font family)
+- `create_ellipse` - Create a new ellipse (circle or oval) with optional fill and stroke
 
 ### Modifying text content
 
@@ -168,6 +169,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `set_fill_color` - Set the fill color of a node (RGBA)
 - `set_stroke_color` - Set the stroke color and weight of a node
 - `set_corner_radius` - Set the corner radius of a node with optional per-corner control
+- `set_opacity` - Set the opacity of a node (0 = transparent, 1 = opaque)
 
 ### Layout & Organization
 
@@ -176,6 +178,8 @@ The MCP server provides the following tools for interacting with Figma:
 - `delete_node` - Delete a node
 - `delete_multiple_nodes` - Delete multiple nodes at once efficiently
 - `clone_node` - Create a copy of an existing node with optional position offset
+- `group_nodes` - Group multiple nodes together
+- `ungroup_node` - Ungroup a group node, moving children to parent
 
 ### Components & Styles
 
@@ -184,6 +188,15 @@ The MCP server provides the following tools for interacting with Figma:
 - `create_component_instance` - Create an instance of a component
 - `get_instance_overrides` - Extract override properties from a selected component instance
 - `set_instance_overrides` - Apply extracted overrides to target instances
+
+### Typography
+
+- `get_available_fonts` - List all available fonts in Figma with optional filter
+- `load_font` - Load a font for use before applying it to text
+- `get_text_styles` - Get all local text styles defined in the document
+- `create_text_style` - Create a new reusable text style
+- `apply_text_style` - Apply a text style to a text node by ID or name
+- `set_text_properties` - Set typography properties (font, size, line height, letter spacing, alignment, etc.)
 
 ### Export & Advanced
 
