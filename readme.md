@@ -1,14 +1,14 @@
-# Cursor Talk to Figma MCP
+# AutoFig
 
-This project implements a Model Context Protocol (MCP) integration between Cursor AI and Figma, allowing Cursor to communicate with Figma for reading designs and modifying them programmatically.
-
-https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
+AutoFig is a Model Context Protocol (MCP) server that enables AI agents in Cursor IDE to read, create, and modify Figma designs programmatically. It bridges the gap between AI-assisted coding and visual design.
 
 ## Project Structure
 
 - `src/talk_to_figma_mcp/` - TypeScript MCP server for Figma integration
-- `src/cursor_mcp_plugin/` - Figma plugin for communicating with Cursor
-- `src/socket.ts` - WebSocket server that facilitates communication between the MCP server and Figma plugin
+- `src/figma-plugin/` - TypeScript plugin source (builds to cursor_mcp_plugin/)
+- `src/cursor_mcp_plugin/` - Figma plugin build output
+- `src/shared/` - Shared types and utilities
+- `src/socket.ts` - WebSocket server for MCP ↔ Plugin communication
 
 ## Get Started
 
@@ -30,21 +30,15 @@ bun setup
 bun socket
 ```
 
-4. **NEW** Install Figma plugin from [Figma community page](https://www.figma.com/community/plugin/1485687494525374295/cursor-talk-to-figma-mcp-plugin) or [install locally](#figma-plugin)
+4. Install the Figma plugin [locally](#figma-plugin)
 
-## Quick Video Tutorial
-
-[Video Link](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
-
-## Design Automation Example
+## Features
 
 **Bulk text content replacement**
-
-Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk text replacement feature. Here is the [demo video](https://www.youtube.com/watch?v=j05gGT3xfCs).
+Scan and update multiple text nodes across your design with intelligent chunking for large designs.
 
 **Instance Override Propagation**
-Another contribution from [@dusskapark](https://github.com/dusskapark)
-Propagate component instance overrides from a source instance to multiple target instances with a single command. This feature dramatically reduces repetitive design work when working with component instances that need similar customizations. Check out our [demo video](https://youtu.be/uvuT8LByroI).
+Propagate component instance overrides from a source instance to multiple target instances with a single command.
 
 ## Development Setup
 
@@ -53,7 +47,7 @@ To develop, update your mcp config to direct to your local directory.
 ```json
 {
   "mcpServers": {
-    "TalkToFigma": {
+    "AutoFig": {
       "command": "bun",
       "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
     }
@@ -70,9 +64,9 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "TalkToFigma": {
+    "AutoFig": {
       "command": "bunx",
-      "args": ["cursor-talk-to-figma-mcp@latest"]
+      "args": ["autofig@latest"]
     }
   }
 }
