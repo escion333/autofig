@@ -7,11 +7,10 @@
     "strict": true,
     "skipLibCheck": true,
     "declaration": false,
-    "outDir": "../../dist/plugin",
-    "rootDir": ".",
+    "noEmit": true,
     "lib": ["ES2020"],
     "types": ["@figma/plugin-typings"],
-    "typeRoots": ["../../node_modules/@types", "../../node_modules/@figma"]
+    "typeRoots": ["../../node_modules/@types", "../../node_modules"]
   },
   "include": ["./**/*.ts", "../shared/**/*.ts"],
   "exclude": ["node_modules"]

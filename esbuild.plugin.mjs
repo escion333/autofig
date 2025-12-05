@@ -14,7 +14,7 @@ const buildOptions = {
   bundle: true,
   outfile: 'src/cursor_mcp_plugin/code.js',
   format: 'iife', // Immediately Invoked Function Expression for Figma
-  target: 'es2020',
+  target: 'es2017', // Use older target to ensure optional chaining is transpiled
   minify: false,
   sourcemap: false,
   // Figma plugin environment doesn't have Node.js globals

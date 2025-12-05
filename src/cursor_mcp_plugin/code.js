@@ -4,6 +4,24 @@
 "use strict";
 (() => {
   var __defProp = Object.defineProperty;
+  var __defProps = Object.defineProperties;
+  var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+  var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __propIsEnum = Object.prototype.propertyIsEnumerable;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __spreadValues = (a, b) => {
+    for (var prop in b || (b = {}))
+      if (__hasOwnProp.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    if (__getOwnPropSymbols)
+      for (var prop of __getOwnPropSymbols(b)) {
+        if (__propIsEnum.call(b, prop))
+          __defNormalProp(a, prop, b[prop]);
+      }
+    return a;
+  };
+  var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
   var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
   // src/shared/utils/color.ts
@@ -363,10 +381,10 @@
 
   // src/figma-plugin/handlers/text.ts
   async function setCharacters(node, characters, options) {
-    const fallbackFont = options?.fallbackFont || { family: "Inter", style: "Regular" };
+    const fallbackFont = (options == null ? void 0 : options.fallbackFont) || { family: "Inter", style: "Regular" };
     try {
       if (node.fontName === figma.mixed) {
-        if (options?.smartStrategy === "prevail" && node.characters.length > 1) {
+        if ((options == null ? void 0 : options.smartStrategy) === "prevail" && node.characters.length > 1) {
           const fontHashTree = {};
           for (let i = 1; i < node.characters.length; i++) {
             const charFont = node.getRangeFontName(i - 1, i);
@@ -607,6 +625,7 @@
 
   // src/figma-plugin/handlers/creation.ts
   async function createRectangle(params) {
+    var _a;
     const {
       x = 0,
       y = 0,
@@ -629,11 +648,12 @@
       y: rect.y,
       width: rect.width,
       height: rect.height,
-      parentId: rect.parent?.id
+      parentId: (_a = rect.parent) == null ? void 0 : _a.id
     };
   }
   __name(createRectangle, "createRectangle");
   async function createEllipse(params) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const {
       x = 0,
       y = 0,
@@ -654,22 +674,22 @@
       ellipse.fills = [{
         type: "SOLID",
         color: {
-          r: fillColor.r ?? 0,
-          g: fillColor.g ?? 0,
-          b: fillColor.b ?? 0
+          r: (_a = fillColor.r) != null ? _a : 0,
+          g: (_b = fillColor.g) != null ? _b : 0,
+          b: (_c = fillColor.b) != null ? _c : 0
         },
-        opacity: fillColor.a ?? 1
+        opacity: (_d = fillColor.a) != null ? _d : 1
       }];
     }
     if (strokeColor) {
       ellipse.strokes = [{
         type: "SOLID",
         color: {
-          r: strokeColor.r ?? 0,
-          g: strokeColor.g ?? 0,
-          b: strokeColor.b ?? 0
+          r: (_e = strokeColor.r) != null ? _e : 0,
+          g: (_f = strokeColor.g) != null ? _f : 0,
+          b: (_g = strokeColor.b) != null ? _g : 0
         },
-        opacity: strokeColor.a ?? 1
+        opacity: (_h = strokeColor.a) != null ? _h : 1
       }];
     }
     if (strokeWeight !== void 0) {
@@ -687,11 +707,12 @@
       fills: ellipse.fills,
       strokes: ellipse.strokes,
       strokeWeight: ellipse.strokeWeight,
-      parentId: ellipse.parent?.id
+      parentId: (_i = ellipse.parent) == null ? void 0 : _i.id
     };
   }
   __name(createEllipse, "createEllipse");
   async function createFrame(params) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const {
       x = 0,
       y = 0,
@@ -736,22 +757,22 @@
       frame.fills = [{
         type: "SOLID",
         color: {
-          r: fillColor.r ?? 0,
-          g: fillColor.g ?? 0,
-          b: fillColor.b ?? 0
+          r: (_a = fillColor.r) != null ? _a : 0,
+          g: (_b = fillColor.g) != null ? _b : 0,
+          b: (_c = fillColor.b) != null ? _c : 0
         },
-        opacity: fillColor.a ?? 1
+        opacity: (_d = fillColor.a) != null ? _d : 1
       }];
     }
     if (strokeColor) {
       frame.strokes = [{
         type: "SOLID",
         color: {
-          r: strokeColor.r ?? 0,
-          g: strokeColor.g ?? 0,
-          b: strokeColor.b ?? 0
+          r: (_e = strokeColor.r) != null ? _e : 0,
+          g: (_f = strokeColor.g) != null ? _f : 0,
+          b: (_g = strokeColor.b) != null ? _g : 0
         },
-        opacity: strokeColor.a ?? 1
+        opacity: (_h = strokeColor.a) != null ? _h : 1
       }];
     }
     if (strokeWeight !== void 0) {
@@ -771,11 +792,12 @@
       strokeWeight: frame.strokeWeight,
       layoutMode: frame.layoutMode,
       layoutWrap: frame.layoutWrap,
-      parentId: frame.parent?.id
+      parentId: (_i = frame.parent) == null ? void 0 : _i.id
     };
   }
   __name(createFrame, "createFrame");
   async function createText(params) {
+    var _a, _b, _c, _d, _e;
     const {
       x = 0,
       y = 0,
@@ -818,11 +840,11 @@
     textNode.fills = [{
       type: "SOLID",
       color: {
-        r: fontColor.r ?? 0,
-        g: fontColor.g ?? 0,
-        b: fontColor.b ?? 0
+        r: (_a = fontColor.r) != null ? _a : 0,
+        g: (_b = fontColor.g) != null ? _b : 0,
+        b: (_c = fontColor.b) != null ? _c : 0
       },
-      opacity: fontColor.a ?? 1
+      opacity: (_d = fontColor.a) != null ? _d : 1
     }];
     const parent = await getContainerNode(parentId);
     parent.appendChild(textNode);
@@ -841,13 +863,408 @@
       fontColor,
       fontName: textNode.fontName,
       fills: textNode.fills,
-      parentId: textNode.parent?.id
+      parentId: (_e = textNode.parent) == null ? void 0 : _e.id
     };
   }
   __name(createText, "createText");
+  async function createPolygon(params) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    const {
+      x = 0,
+      y = 0,
+      pointCount = 6,
+      radius = 50,
+      name = "Polygon",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    const polygon = figma.createPolygon();
+    polygon.x = x;
+    polygon.y = y;
+    polygon.resize(radius * 2, radius * 2);
+    polygon.pointCount = Math.max(3, Math.min(100, pointCount));
+    polygon.name = name;
+    if (fillColor) {
+      polygon.fills = [{
+        type: "SOLID",
+        color: {
+          r: (_a = fillColor.r) != null ? _a : 0,
+          g: (_b = fillColor.g) != null ? _b : 0,
+          b: (_c = fillColor.b) != null ? _c : 0
+        },
+        opacity: (_d = fillColor.a) != null ? _d : 1
+      }];
+    }
+    if (strokeColor) {
+      polygon.strokes = [{
+        type: "SOLID",
+        color: {
+          r: (_e = strokeColor.r) != null ? _e : 0,
+          g: (_f = strokeColor.g) != null ? _f : 0,
+          b: (_g = strokeColor.b) != null ? _g : 0
+        },
+        opacity: (_h = strokeColor.a) != null ? _h : 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      polygon.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(polygon);
+    return {
+      id: polygon.id,
+      name: polygon.name,
+      x: polygon.x,
+      y: polygon.y,
+      width: polygon.width,
+      height: polygon.height,
+      pointCount: polygon.pointCount,
+      parentId: (_i = polygon.parent) == null ? void 0 : _i.id
+    };
+  }
+  __name(createPolygon, "createPolygon");
+  async function createStar(params) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    const {
+      x = 0,
+      y = 0,
+      pointCount = 5,
+      innerRadius = 25,
+      outerRadius = 50,
+      name = "Star",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    const star = figma.createStar();
+    star.x = x;
+    star.y = y;
+    star.resize(outerRadius * 2, outerRadius * 2);
+    star.pointCount = Math.max(3, Math.min(100, pointCount));
+    star.innerRadius = innerRadius / outerRadius;
+    star.name = name;
+    if (fillColor) {
+      star.fills = [{
+        type: "SOLID",
+        color: {
+          r: (_a = fillColor.r) != null ? _a : 0,
+          g: (_b = fillColor.g) != null ? _b : 0,
+          b: (_c = fillColor.b) != null ? _c : 0
+        },
+        opacity: (_d = fillColor.a) != null ? _d : 1
+      }];
+    }
+    if (strokeColor) {
+      star.strokes = [{
+        type: "SOLID",
+        color: {
+          r: (_e = strokeColor.r) != null ? _e : 0,
+          g: (_f = strokeColor.g) != null ? _f : 0,
+          b: (_g = strokeColor.b) != null ? _g : 0
+        },
+        opacity: (_h = strokeColor.a) != null ? _h : 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      star.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(star);
+    return {
+      id: star.id,
+      name: star.name,
+      x: star.x,
+      y: star.y,
+      width: star.width,
+      height: star.height,
+      pointCount: star.pointCount,
+      innerRadius: star.innerRadius,
+      parentId: (_i = star.parent) == null ? void 0 : _i.id
+    };
+  }
+  __name(createStar, "createStar");
+  async function createLine(params) {
+    var _a, _b, _c, _d, _e;
+    const {
+      startX = 0,
+      startY = 0,
+      endX = 100,
+      endY = 0,
+      name = "Line",
+      parentId,
+      strokeColor,
+      strokeWeight = 1
+    } = params || {};
+    const line = figma.createLine();
+    line.x = startX;
+    line.y = startY;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    line.resize(length, 0);
+    line.rotation = angle;
+    line.name = name;
+    line.strokes = [{
+      type: "SOLID",
+      color: strokeColor ? {
+        r: (_a = strokeColor.r) != null ? _a : 0,
+        g: (_b = strokeColor.g) != null ? _b : 0,
+        b: (_c = strokeColor.b) != null ? _c : 0
+      } : { r: 0, g: 0, b: 0 },
+      opacity: (_d = strokeColor == null ? void 0 : strokeColor.a) != null ? _d : 1
+    }];
+    line.strokeWeight = strokeWeight;
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(line);
+    return {
+      id: line.id,
+      name: line.name,
+      x: line.x,
+      y: line.y,
+      width: line.width,
+      rotation: line.rotation,
+      strokeWeight: line.strokeWeight,
+      parentId: (_e = line.parent) == null ? void 0 : _e.id
+    };
+  }
+  __name(createLine, "createLine");
+  async function createVector(params) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    const {
+      x = 0,
+      y = 0,
+      pathData,
+      name = "Vector",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    if (!pathData) {
+      throw new Error("Missing pathData parameter");
+    }
+    const vector = figma.createVector();
+    vector.x = x;
+    vector.y = y;
+    vector.name = name;
+    try {
+      vector.vectorPaths = [{
+        windingRule: "NONZERO",
+        data: pathData
+      }];
+    } catch (error) {
+      throw new Error(`Invalid path data: ${error.message}`);
+    }
+    if (fillColor) {
+      vector.fills = [{
+        type: "SOLID",
+        color: {
+          r: (_a = fillColor.r) != null ? _a : 0,
+          g: (_b = fillColor.g) != null ? _b : 0,
+          b: (_c = fillColor.b) != null ? _c : 0
+        },
+        opacity: (_d = fillColor.a) != null ? _d : 1
+      }];
+    } else {
+      vector.fills = [];
+    }
+    if (strokeColor) {
+      vector.strokes = [{
+        type: "SOLID",
+        color: {
+          r: (_e = strokeColor.r) != null ? _e : 0,
+          g: (_f = strokeColor.g) != null ? _f : 0,
+          b: (_g = strokeColor.b) != null ? _g : 0
+        },
+        opacity: (_h = strokeColor.a) != null ? _h : 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      vector.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(vector);
+    return {
+      id: vector.id,
+      name: vector.name,
+      x: vector.x,
+      y: vector.y,
+      width: vector.width,
+      height: vector.height,
+      parentId: (_i = vector.parent) == null ? void 0 : _i.id
+    };
+  }
+  __name(createVector, "createVector");
+  async function booleanOperation(params) {
+    var _a;
+    const { nodeIds, operation, name } = params || {};
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+      throw new Error("At least 2 node IDs are required for boolean operations");
+    }
+    if (!operation) {
+      throw new Error("Missing operation parameter");
+    }
+    const nodes = [];
+    for (const nodeId of nodeIds) {
+      const node = await getNodeById(nodeId);
+      if (!("parent" in node)) {
+        throw new Error(`Node ${nodeId} does not support boolean operations`);
+      }
+      nodes.push(node);
+    }
+    const firstParent = nodes[0].parent;
+    if (!firstParent) {
+      throw new Error("Cannot perform boolean operation on nodes without a parent. Nodes must be inside a frame or group.");
+    }
+    for (const node of nodes) {
+      if (node.parent !== firstParent) {
+        throw new Error("All nodes must have the same parent for boolean operations");
+      }
+    }
+    if (!("appendChild" in firstParent)) {
+      throw new Error("Parent does not support adding children");
+    }
+    let resultNode;
+    switch (operation) {
+      case "UNION":
+        resultNode = figma.union(nodes, firstParent);
+        break;
+      case "SUBTRACT":
+        resultNode = figma.subtract(nodes, firstParent);
+        break;
+      case "INTERSECT":
+        resultNode = figma.intersect(nodes, firstParent);
+        break;
+      case "EXCLUDE":
+        resultNode = figma.exclude(nodes, firstParent);
+        break;
+      default:
+        throw new Error(`Invalid boolean operation: ${operation}`);
+    }
+    if (name) {
+      resultNode.name = name;
+    }
+    return {
+      id: resultNode.id,
+      name: resultNode.name,
+      x: resultNode.x,
+      y: resultNode.y,
+      width: resultNode.width,
+      height: resultNode.height,
+      booleanOperation: resultNode.booleanOperation,
+      parentId: (_a = resultNode.parent) == null ? void 0 : _a.id
+    };
+  }
+  __name(booleanOperation, "booleanOperation");
+  async function flattenNode(params) {
+    var _a;
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await getNodeById(nodeId);
+    if (!("flatten" in figma)) {
+      throw new Error("Flatten operation is not available");
+    }
+    const parent = node.parent;
+    if (!parent) {
+      throw new Error("Cannot flatten a node without a parent");
+    }
+    const flattenedNode = figma.flatten([node], parent);
+    return {
+      id: flattenedNode.id,
+      name: flattenedNode.name,
+      x: flattenedNode.x,
+      y: flattenedNode.y,
+      width: flattenedNode.width,
+      height: flattenedNode.height,
+      parentId: (_a = flattenedNode.parent) == null ? void 0 : _a.id
+    };
+  }
+  __name(flattenNode, "flattenNode");
+  async function outlineStroke(params) {
+    var _a, _b;
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "outlineStroke", `Node "${node.name}" does not support outline stroke`);
+    const outlinedNodes = node.outlineStroke();
+    if (!outlinedNodes || outlinedNodes.length === 0) {
+      throw new Error("Outline stroke produced no results. Make sure the node has a stroke.");
+    }
+    if (outlinedNodes.length > 1) {
+      const parent = node.parent;
+      if (!parent || !("appendChild" in parent)) {
+        throw new Error("Cannot create group for outlined strokes - no valid parent");
+      }
+      const group = figma.group(outlinedNodes, parent);
+      group.name = `${node.name} (outlined)`;
+      return {
+        id: group.id,
+        name: group.name,
+        x: group.x,
+        y: group.y,
+        width: group.width,
+        height: group.height,
+        parentId: (_a = group.parent) == null ? void 0 : _a.id
+      };
+    }
+    const outlinedNode = outlinedNodes[0];
+    outlinedNode.name = `${node.name} (outlined)`;
+    return {
+      id: outlinedNode.id,
+      name: outlinedNode.name,
+      x: outlinedNode.x,
+      y: outlinedNode.y,
+      width: outlinedNode.width,
+      height: outlinedNode.height,
+      parentId: (_b = outlinedNode.parent) == null ? void 0 : _b.id
+    };
+  }
+  __name(outlineStroke, "outlineStroke");
+  async function setImageFill(params) {
+    const { nodeId, imageData, scaleMode = "FILL" } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!imageData) {
+      throw new Error("Missing imageData parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "fills", `Node "${node.name}" does not support fills`);
+    let cleanImageData = imageData;
+    if (imageData.includes(",")) {
+      cleanImageData = imageData.split(",")[1];
+    }
+    const binaryString = atob(cleanImageData);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const image = figma.createImage(bytes);
+    node.fills = [{
+      type: "IMAGE",
+      scaleMode,
+      imageHash: image.hash
+    }];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      scaleMode
+    };
+  }
+  __name(setImageFill, "setImageFill");
 
   // src/figma-plugin/handlers/styling.ts
   async function setFillColor(params) {
+    var _a, _b, _c, _d;
     const { nodeId, color } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -860,11 +1277,11 @@
     const paintStyle = {
       type: "SOLID",
       color: {
-        r: color.r ?? 0,
-        g: color.g ?? 0,
-        b: color.b ?? 0
+        r: (_a = color.r) != null ? _a : 0,
+        g: (_b = color.g) != null ? _b : 0,
+        b: (_c = color.b) != null ? _c : 0
       },
-      opacity: color.a ?? 1
+      opacity: (_d = color.a) != null ? _d : 1
     };
     node.fills = [paintStyle];
     return {
@@ -875,6 +1292,7 @@
   }
   __name(setFillColor, "setFillColor");
   async function setStrokeColor(params) {
+    var _a, _b, _c, _d;
     const { nodeId, color, weight = 1 } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -887,11 +1305,11 @@
     const paintStyle = {
       type: "SOLID",
       color: {
-        r: color.r ?? 0,
-        g: color.g ?? 0,
-        b: color.b ?? 0
+        r: (_a = color.r) != null ? _a : 0,
+        g: (_b = color.g) != null ? _b : 0,
+        b: (_c = color.b) != null ? _c : 0
       },
-      opacity: color.a ?? 1
+      opacity: (_d = color.a) != null ? _d : 1
     };
     const strokableNode = node;
     strokableNode.strokes = [paintStyle];
@@ -925,7 +1343,7 @@
         if (bottomRightRadius !== void 0) cornerNode.bottomRightRadius = bottomRightRadius;
         if (bottomLeftRadius !== void 0) cornerNode.bottomLeftRadius = bottomLeftRadius;
       } else {
-        cornerNode.cornerRadius = radius ?? 0;
+        cornerNode.cornerRadius = radius != null ? radius : 0;
       }
     } else if (radius !== void 0) {
       cornerNode.cornerRadius = radius;
@@ -963,6 +1381,7 @@
 
   // src/figma-plugin/handlers/organization.ts
   async function groupNodes(params) {
+    var _a, _b, _c;
     const { nodeIds, name = "Group" } = params || {};
     if (!nodeIds || nodeIds.length === 0) {
       throw new Error("Missing nodeIds parameter - at least one node ID is required");
@@ -982,7 +1401,7 @@
     for (let i = 1; i < nodes.length; i++) {
       if (nodes[i].parent !== firstParent) {
         throw new Error(
-          `All nodes must have the same parent to be grouped. Node "${nodes[0].name}" has parent "${firstParent.name || firstParent.id}", but node "${nodes[i].name}" has parent "${nodes[i].parent?.name || nodes[i].parent?.id || "none"}"`
+          `All nodes must have the same parent to be grouped. Node "${nodes[0].name}" has parent "${firstParent.name || firstParent.id}", but node "${nodes[i].name}" has parent "${((_a = nodes[i].parent) == null ? void 0 : _a.name) || ((_b = nodes[i].parent) == null ? void 0 : _b.id) || "none"}"`
         );
       }
     }
@@ -997,7 +1416,7 @@
       width: group.width,
       height: group.height,
       childCount: group.children.length,
-      parentId: group.parent?.id
+      parentId: (_c = group.parent) == null ? void 0 : _c.id
     };
   }
   __name(groupNodes, "groupNodes");
@@ -1093,7 +1512,7 @@
         valuesByMode,
         hiddenFromPublishing: variable.hiddenFromPublishing,
         scopes: [...variable.scopes],
-        codeSyntax: { ...variable.codeSyntax }
+        codeSyntax: __spreadValues({}, variable.codeSyntax)
       };
     });
     return {
@@ -1170,7 +1589,7 @@
       valuesByMode,
       hiddenFromPublishing: variable.hiddenFromPublishing,
       scopes: [...variable.scopes],
-      codeSyntax: { ...variable.codeSyntax }
+      codeSyntax: __spreadValues({}, variable.codeSyntax)
     };
   }
   __name(createVariable, "createVariable");
@@ -1204,7 +1623,7 @@
       valuesByMode,
       hiddenFromPublishing: variable.hiddenFromPublishing,
       scopes: [...variable.scopes],
-      codeSyntax: { ...variable.codeSyntax }
+      codeSyntax: __spreadValues({}, variable.codeSyntax)
     };
   }
   __name(setVariableValue, "setVariableValue");
@@ -1243,7 +1662,7 @@
               const variable = await figma.variables.getVariableByIdAsync(binding.id);
               return {
                 variableId: binding.id,
-                variableName: variable?.name
+                variableName: variable == null ? void 0 : variable.name
               };
             })
           );
@@ -1313,13 +1732,14 @@
   }
   __name(unbindVariable, "unbindVariable");
   function convertToFigmaValue(value, resolvedType) {
+    var _a;
     if (resolvedType === "COLOR") {
       if (typeof value === "object" && "r" in value) {
         return {
           r: value.r,
           g: value.g,
           b: value.b,
-          a: value.a ?? 1
+          a: (_a = value.a) != null ? _a : 1
         };
       }
       throw new Error("COLOR variable requires an RGBA object");
@@ -1603,30 +2023,34 @@
   async function getPaintStyles() {
     const paintStyles = await figma.getLocalPaintStylesAsync();
     const styles = paintStyles.map((style) => {
+      var _a, _b;
       const paint = style.paints[0];
       const result = {
         id: style.id,
         name: style.name,
         key: style.key,
-        type: paint?.type === "SOLID" ? "SOLID" : paint?.type || "SOLID"
+        type: (paint == null ? void 0 : paint.type) === "SOLID" ? "SOLID" : (paint == null ? void 0 : paint.type) || "SOLID"
       };
-      if (paint?.type === "SOLID") {
+      if ((paint == null ? void 0 : paint.type) === "SOLID") {
         result.color = {
           r: paint.color.r,
           g: paint.color.g,
           b: paint.color.b,
-          a: paint.opacity ?? 1
+          a: (_a = paint.opacity) != null ? _a : 1
         };
-      } else if (paint?.type?.startsWith("GRADIENT_")) {
-        result.gradientStops = paint.gradientStops.map((stop) => ({
-          position: stop.position,
-          color: {
-            r: stop.color.r,
-            g: stop.color.g,
-            b: stop.color.b,
-            a: stop.color.a ?? 1
-          }
-        }));
+      } else if ((_b = paint == null ? void 0 : paint.type) == null ? void 0 : _b.startsWith("GRADIENT_")) {
+        result.gradientStops = paint.gradientStops.map((stop) => {
+          var _a2;
+          return {
+            position: stop.position,
+            color: {
+              r: stop.color.r,
+              g: stop.color.g,
+              b: stop.color.b,
+              a: (_a2 = stop.color.a) != null ? _a2 : 1
+            }
+          };
+        });
       }
       return result;
     });
@@ -1637,6 +2061,7 @@
   }
   __name(getPaintStyles, "getPaintStyles");
   async function createPaintStyle(params) {
+    var _a, _b, _c, _d, _e;
     const { name, color } = params;
     if (!name) {
       throw new Error("Missing name parameter");
@@ -1649,11 +2074,11 @@
     const paint = {
       type: "SOLID",
       color: {
-        r: color.r ?? 0,
-        g: color.g ?? 0,
-        b: color.b ?? 0
+        r: (_a = color.r) != null ? _a : 0,
+        g: (_b = color.g) != null ? _b : 0,
+        b: (_c = color.b) != null ? _c : 0
       },
-      opacity: color.a ?? 1
+      opacity: (_d = color.a) != null ? _d : 1
     };
     style.paints = [paint];
     return {
@@ -1665,12 +2090,13 @@
         r: paint.color.r,
         g: paint.color.g,
         b: paint.color.b,
-        a: paint.opacity ?? 1
+        a: (_e = paint.opacity) != null ? _e : 1
       }
     };
   }
   __name(createPaintStyle, "createPaintStyle");
   async function updatePaintStyle(params) {
+    var _a, _b, _c, _d, _e;
     const { styleId, name, color } = params;
     if (!styleId) {
       throw new Error("Missing styleId parameter");
@@ -1689,11 +2115,11 @@
       const paint = {
         type: "SOLID",
         color: {
-          r: color.r ?? 0,
-          g: color.g ?? 0,
-          b: color.b ?? 0
+          r: (_a = color.r) != null ? _a : 0,
+          g: (_b = color.g) != null ? _b : 0,
+          b: (_c = color.b) != null ? _c : 0
         },
-        opacity: color.a ?? 1
+        opacity: (_d = color.a) != null ? _d : 1
       };
       style.paints = [paint];
     }
@@ -1702,14 +2128,14 @@
       id: style.id,
       name: style.name,
       key: style.key,
-      type: currentPaint?.type === "SOLID" ? "SOLID" : currentPaint?.type || "SOLID"
+      type: (currentPaint == null ? void 0 : currentPaint.type) === "SOLID" ? "SOLID" : (currentPaint == null ? void 0 : currentPaint.type) || "SOLID"
     };
-    if (currentPaint?.type === "SOLID") {
+    if ((currentPaint == null ? void 0 : currentPaint.type) === "SOLID") {
       result.color = {
         r: currentPaint.color.r,
         g: currentPaint.color.g,
         b: currentPaint.color.b,
-        a: currentPaint.opacity ?? 1
+        a: (_e = currentPaint.opacity) != null ? _e : 1
       };
     }
     return result;
@@ -1798,15 +2224,18 @@
     ];
     const gradientPaint = {
       type: figmaGradientType,
-      gradientStops: stops.map((stop) => ({
-        position: Math.max(0, Math.min(1, stop.position)),
-        color: {
-          r: stop.color.r ?? 0,
-          g: stop.color.g ?? 0,
-          b: stop.color.b ?? 0,
-          a: stop.color.a ?? 1
-        }
-      })),
+      gradientStops: stops.map((stop) => {
+        var _a, _b, _c, _d;
+        return {
+          position: Math.max(0, Math.min(1, stop.position)),
+          color: {
+            r: (_a = stop.color.r) != null ? _a : 0,
+            g: (_b = stop.color.g) != null ? _b : 0,
+            b: (_c = stop.color.b) != null ? _c : 0,
+            a: (_d = stop.color.a) != null ? _d : 1
+          }
+        };
+      }),
       gradientTransform: gradientType === "LINEAR" ? gradientTransform : void 0
     };
     node.fills = [gradientPaint];
@@ -1822,23 +2251,24 @@
 
   // src/figma-plugin/handlers/effects.ts
   function effectInputToFigmaEffect(input) {
-    const visible = input.visible ?? true;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A;
+    const visible = (_a = input.visible) != null ? _a : true;
     switch (input.type) {
       case "DROP_SHADOW":
         return {
           type: "DROP_SHADOW",
           color: {
-            r: input.color?.r ?? 0,
-            g: input.color?.g ?? 0,
-            b: input.color?.b ?? 0,
-            a: input.color?.a ?? 0.25
+            r: (_c = (_b = input.color) == null ? void 0 : _b.r) != null ? _c : 0,
+            g: (_e = (_d = input.color) == null ? void 0 : _d.g) != null ? _e : 0,
+            b: (_g = (_f = input.color) == null ? void 0 : _f.b) != null ? _g : 0,
+            a: (_i = (_h = input.color) == null ? void 0 : _h.a) != null ? _i : 0.25
           },
           offset: {
-            x: input.offsetX ?? 0,
-            y: input.offsetY ?? 4
+            x: (_j = input.offsetX) != null ? _j : 0,
+            y: (_k = input.offsetY) != null ? _k : 4
           },
-          radius: input.radius ?? 4,
-          spread: input.spread ?? 0,
+          radius: (_l = input.radius) != null ? _l : 4,
+          spread: (_m = input.spread) != null ? _m : 0,
           visible,
           blendMode: "NORMAL"
         };
@@ -1846,30 +2276,30 @@
         return {
           type: "INNER_SHADOW",
           color: {
-            r: input.color?.r ?? 0,
-            g: input.color?.g ?? 0,
-            b: input.color?.b ?? 0,
-            a: input.color?.a ?? 0.25
+            r: (_o = (_n = input.color) == null ? void 0 : _n.r) != null ? _o : 0,
+            g: (_q = (_p = input.color) == null ? void 0 : _p.g) != null ? _q : 0,
+            b: (_s = (_r = input.color) == null ? void 0 : _r.b) != null ? _s : 0,
+            a: (_u = (_t = input.color) == null ? void 0 : _t.a) != null ? _u : 0.25
           },
           offset: {
-            x: input.offsetX ?? 0,
-            y: input.offsetY ?? 2
+            x: (_v = input.offsetX) != null ? _v : 0,
+            y: (_w = input.offsetY) != null ? _w : 2
           },
-          radius: input.radius ?? 4,
-          spread: input.spread ?? 0,
+          radius: (_x = input.radius) != null ? _x : 4,
+          spread: (_y = input.spread) != null ? _y : 0,
           visible,
           blendMode: "NORMAL"
         };
       case "LAYER_BLUR":
         return {
           type: "LAYER_BLUR",
-          radius: input.radius ?? 4,
+          radius: (_z = input.radius) != null ? _z : 4,
           visible
         };
       case "BACKGROUND_BLUR":
         return {
           type: "BACKGROUND_BLUR",
-          radius: input.radius ?? 10,
+          radius: (_A = input.radius) != null ? _A : 10,
           visible
         };
       default:
@@ -2010,6 +2440,7 @@
   }
   __name(setEffects, "setEffects");
   async function addDropShadow(params) {
+    var _a, _b, _c, _d;
     const { nodeId, color, offsetX = 0, offsetY = 4, radius = 4, spread = 0, visible = true } = params;
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -2024,10 +2455,10 @@
     const newShadow = {
       type: "DROP_SHADOW",
       color: {
-        r: color.r ?? 0,
-        g: color.g ?? 0,
-        b: color.b ?? 0,
-        a: color.a ?? 0.25
+        r: (_a = color.r) != null ? _a : 0,
+        g: (_b = color.g) != null ? _b : 0,
+        b: (_c = color.b) != null ? _c : 0,
+        a: (_d = color.a) != null ? _d : 0.25
       },
       offset: { x: offsetX, y: offsetY },
       radius,
@@ -2045,6 +2476,7 @@
   }
   __name(addDropShadow, "addDropShadow");
   async function addInnerShadow(params) {
+    var _a, _b, _c, _d;
     const { nodeId, color, offsetX = 0, offsetY = 2, radius = 4, spread = 0, visible = true } = params;
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -2059,10 +2491,10 @@
     const newShadow = {
       type: "INNER_SHADOW",
       color: {
-        r: color.r ?? 0,
-        g: color.g ?? 0,
-        b: color.b ?? 0,
-        a: color.a ?? 0.25
+        r: (_a = color.r) != null ? _a : 0,
+        g: (_b = color.g) != null ? _b : 0,
+        b: (_c = color.b) != null ? _c : 0,
+        a: (_d = color.a) != null ? _d : 0.25
       },
       offset: { x: offsetX, y: offsetY },
       radius,
@@ -2330,10 +2762,10 @@
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "constraints", `Node "${node.name}" does not support constraints`);
     const constrainedNode = node;
-    const currentConstraints = { ...constrainedNode.constraints };
+    const currentConstraints = __spreadValues({}, constrainedNode.constraints);
     constrainedNode.constraints = {
-      horizontal: horizontal ?? currentConstraints.horizontal,
-      vertical: vertical ?? currentConstraints.vertical
+      horizontal: horizontal != null ? horizontal : currentConstraints.horizontal,
+      vertical: vertical != null ? vertical : currentConstraints.vertical
     };
     return {
       nodeId: node.id,
@@ -2346,31 +2778,30 @@
 
   // src/figma-plugin/handlers/grid-styles.ts
   function layoutGridInputToFigma(input) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const baseGrid = {
-      visible: input.visible ?? true,
+      visible: (_a = input.visible) != null ? _a : true,
       color: input.color ? {
-        r: input.color.r ?? 1,
-        g: input.color.g ?? 0,
-        b: input.color.b ?? 0,
-        a: input.color.a ?? 0.1
+        r: (_b = input.color.r) != null ? _b : 1,
+        g: (_c = input.color.g) != null ? _c : 0,
+        b: (_d = input.color.b) != null ? _d : 0,
+        a: (_e = input.color.a) != null ? _e : 0.1
       } : { r: 1, g: 0, b: 0, a: 0.1 }
     };
     if (input.pattern === "GRID") {
-      return {
-        ...baseGrid,
+      return __spreadProps(__spreadValues({}, baseGrid), {
         pattern: "GRID",
-        sectionSize: input.sectionSize ?? 10
-      };
+        sectionSize: (_f = input.sectionSize) != null ? _f : 10
+      });
     }
-    return {
-      ...baseGrid,
+    return __spreadProps(__spreadValues({}, baseGrid), {
       pattern: input.pattern,
-      alignment: input.alignment ?? "STRETCH",
-      gutterSize: input.gutterSize ?? 20,
-      count: input.count ?? 12,
-      sectionSize: input.sectionSize ?? 1,
-      offset: input.offset ?? 0
-    };
+      alignment: (_g = input.alignment) != null ? _g : "STRETCH",
+      gutterSize: (_h = input.gutterSize) != null ? _h : 20,
+      count: (_i = input.count) != null ? _i : 12,
+      sectionSize: (_j = input.sectionSize) != null ? _j : 1,
+      offset: (_k = input.offset) != null ? _k : 0
+    });
   }
   __name(layoutGridInputToFigma, "layoutGridInputToFigma");
   function figmaLayoutGridToOutput(grid) {
@@ -2718,6 +3149,7 @@
   }
   __name(getLocalComponents, "getLocalComponents");
   async function createComponent(params) {
+    var _a;
     const { nodeId, name } = params;
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -2739,7 +3171,7 @@
       key: component.key,
       type: "COMPONENT",
       description: component.description,
-      documentationLinks: component.documentationLinks?.map((link) => link.uri) || [],
+      documentationLinks: ((_a = component.documentationLinks) == null ? void 0 : _a.map((link) => link.uri)) || [],
       remote: component.remote
     };
   }
@@ -2787,6 +3219,7 @@
   }
   __name(createComponentSet, "createComponentSet");
   async function getComponentProperties(params) {
+    var _a;
     const { componentId } = params;
     if (!componentId) {
       throw new Error("Missing componentId parameter");
@@ -2806,7 +3239,7 @@
           name: propName,
           type: propDef.type,
           defaultValue: propDef.defaultValue,
-          preferredValues: propDef.preferredValues?.map((pv) => ({
+          preferredValues: (_a = propDef.preferredValues) == null ? void 0 : _a.map((pv) => ({
             type: pv.type,
             key: pv.key
           })),
@@ -2891,6 +3324,7 @@
   }
   __name(setComponentPropertyValue, "setComponentPropertyValue");
   async function createComponentInstance(params) {
+    var _a;
     const { componentKey, x = 0, y = 0, parentId } = params || {};
     if (!componentKey) {
       throw new Error("Missing componentKey parameter");
@@ -2917,7 +3351,7 @@
         y: instance.y,
         width: instance.width,
         height: instance.height,
-        componentId: instance.mainComponent?.id
+        componentId: (_a = instance.mainComponent) == null ? void 0 : _a.id
       };
     } catch (error) {
       throw new Error(`Error creating component instance: ${error.message}`);
@@ -3545,6 +3979,24 @@
         return await createText(params);
       case "create_ellipse":
         return await createEllipse(params);
+      case "create_polygon":
+        return await createPolygon(params);
+      case "create_star":
+        return await createStar(params);
+      case "create_line":
+        return await createLine(params);
+      case "create_vector":
+        return await createVector(params);
+      // Boolean Operations
+      case "boolean_operation":
+        return await booleanOperation(params);
+      case "flatten_node":
+        return await flattenNode(params);
+      case "outline_stroke":
+        return await outlineStroke(params);
+      // Images
+      case "set_image_fill":
+        return await setImageFill(params);
       // Styling
       case "set_fill_color":
         return await setFillColor(params);

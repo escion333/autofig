@@ -33,7 +33,7 @@ figma.showUI(__html__, { width: 350, height: 450 });
 figma.ui.onmessage = async (msg: {
   type: string;
   command?: FigmaCommand;
-  params?: CommandParams[FigmaCommand];
+  params?: unknown;
   id?: string;
   message?: string;
   serverPort?: number;
@@ -57,7 +57,7 @@ figma.ui.onmessage = async (msg: {
       // Execute commands received from UI (which gets them from WebSocket)
       if (msg.command && msg.id) {
         try {
-          const result = await handleCommand(msg.command, msg.params || {} as CommandParams[typeof msg.command]);
+          const result = await handleCommand(msg.command, msg.params as CommandParams[typeof msg.command]);
           // Send result back to UI
           figma.ui.postMessage({
             type: 'command-result',

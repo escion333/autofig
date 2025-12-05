@@ -257,22 +257,8 @@ export async function addComponentProperty(
 
   const componentNode = node as ComponentNode | ComponentSetNode;
 
-  // Create the property definition
-  const propertyDef: ComponentPropertyDefinition = {
-    type: propertyType,
-    defaultValue: defaultValue,
-  };
-
-  if (preferredValues) {
-    propertyDef.preferredValues = preferredValues;
-  }
-
-  if (variantOptions) {
-    propertyDef.variantOptions = variantOptions;
-  }
-
   // Add the property
-  componentNode.addComponentProperty(propertyName, propertyDef.type, propertyDef.defaultValue);
+  componentNode.addComponentProperty(propertyName, propertyType, defaultValue);
 
   return {
     success: true,

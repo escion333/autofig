@@ -6,6 +6,10 @@
 import type { FilteredNode, NodeType, TextStyle } from '../types/figma';
 import { rgbaToHex } from './color';
 
+// Helper types for array element access
+type FillElement = NonNullable<FilteredNode['fills']>[number];
+type StrokeElement = NonNullable<FilteredNode['strokes']>[number];
+
 /**
  * Interface for raw Figma node data from exportAsync
  */
@@ -58,7 +62,7 @@ export function filterFigmaNode(node: RawFigmaNode): FilteredNode | null {
   // Process fills
   if (node.fills && node.fills.length > 0) {
     filtered.fills = node.fills.map((fill) => {
-      const processedFill: FilteredNode['fills'][0] = {
+      const processedFill: FillElement = {
         type: fill.type,
       };
 
@@ -86,7 +90,7 @@ export function filterFigmaNode(node: RawFigmaNode): FilteredNode | null {
   // Process strokes
   if (node.strokes && node.strokes.length > 0) {
     filtered.strokes = node.strokes.map((stroke) => {
-      const processedStroke: FilteredNode['strokes'][0] = {
+      const processedStroke: StrokeElement = {
         type: stroke.type,
       };
 

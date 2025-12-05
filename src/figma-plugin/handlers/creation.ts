@@ -710,32 +710,12 @@ export async function outlineStroke(params: CommandParams['outline_stroke']): Pr
   const node = await getNodeById(nodeId);
   assertNodeCapability(node, 'outlineStroke', `Node "${node.name}" does not support outline stroke`);
 
-  const outlinedNodes = (node as GeometryMixin).outlineStroke();
+  const outlinedNode = (node as GeometryMixin).outlineStroke();
 
-  if (!outlinedNodes || outlinedNodes.length === 0) {
+  if (!outlinedNode) {
     throw new Error('Outline stroke produced no results. Make sure the node has a stroke.');
   }
 
-  // If multiple nodes were produced, group them
-  if (outlinedNodes.length > 1) {
-    const parent = node.parent;
-    if (!parent || !('appendChild' in parent)) {
-      throw new Error('Cannot create group for outlined strokes - no valid parent');
-    }
-    const group = figma.group(outlinedNodes, parent as FrameNode | GroupNode | PageNode);
-    group.name = `${node.name} (outlined)`;
-    return {
-      id: group.id,
-      name: group.name,
-      x: group.x,
-      y: group.y,
-      width: group.width,
-      height: group.height,
-      parentId: group.parent?.id,
-    };
-  }
-
-  const outlinedNode = outlinedNodes[0];
   outlinedNode.name = `${node.name} (outlined)`;
 
   return {
@@ -777,12 +757,8 @@ export async function setImageFill(params: CommandParams['set_image_fill']): Pro
     cleanImageData = imageData.split(',')[1];
   }
 
-  // Decode base64 to Uint8Array
-  const binaryString = atob(cleanImageData);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  // Decode base64 to Uint8Array using Figma's base64Decode
+  const bytes = figma.base64Decode(cleanImageData);
 
   // Create the image
   const image = figma.createImage(bytes);

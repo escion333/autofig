@@ -118,9 +118,9 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
       if (topRightRadius !== undefined) cornerNode.topRightRadius = topRightRadius;
       if (bottomRightRadius !== undefined) cornerNode.bottomRightRadius = bottomRightRadius;
       if (bottomLeftRadius !== undefined) cornerNode.bottomLeftRadius = bottomLeftRadius;
-    } else {
+    } else if ('cornerRadius' in cornerNode) {
       // Node only supports uniform corner radius
-      cornerNode.cornerRadius = radius ?? 0;
+      (cornerNode as RectangleNode).cornerRadius = radius ?? 0;
     }
   } else if (radius !== undefined) {
     // Set uniform corner radius

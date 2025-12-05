@@ -130,9 +130,9 @@ export { setCharacters };
 /**
  * Main command dispatcher
  */
-export async function handleCommand<T extends FigmaCommand>(
-  command: T,
-  params: CommandParams[T]
+export async function handleCommand(
+  command: FigmaCommand,
+  params: CommandParams[FigmaCommand]
 ): Promise<unknown> {
   switch (command) {
     // Document & Selection

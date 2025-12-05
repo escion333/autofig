@@ -439,13 +439,13 @@ export async function addLayerBlur(
   const blendNode = node as BlendMixin;
   const existingEffects = [...blendNode.effects];
 
-  const newBlur: BlurEffect = {
-    type: 'LAYER_BLUR',
+  const newBlur = {
+    type: 'LAYER_BLUR' as const,
     radius,
     visible,
   };
 
-  blendNode.effects = [...existingEffects, newBlur];
+  blendNode.effects = [...existingEffects, newBlur] as Effect[];
 
   return {
     success: true,
@@ -482,13 +482,13 @@ export async function addBackgroundBlur(
   const blendNode = node as BlendMixin;
   const existingEffects = [...blendNode.effects];
 
-  const newBlur: BlurEffect = {
-    type: 'BACKGROUND_BLUR',
+  const newBlur = {
+    type: 'BACKGROUND_BLUR' as const,
     radius,
     visible,
   };
 
-  blendNode.effects = [...existingEffects, newBlur];
+  blendNode.effects = [...existingEffects, newBlur] as Effect[];
 
   return {
     success: true,

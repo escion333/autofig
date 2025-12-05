@@ -332,7 +332,7 @@ export async function setGradientFill(
         a: stop.color.a ?? 1,
       },
     })),
-    gradientTransform: gradientType === 'LINEAR' ? gradientTransform : undefined,
+    gradientTransform: gradientType === 'LINEAR' ? gradientTransform : [[1, 0, 0], [0, 1, 0]],
   };
 
   (node as GeometryMixin).fills = [gradientPaint];

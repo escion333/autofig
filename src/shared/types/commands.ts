@@ -2,7 +2,7 @@
  * Command and response type definitions for MCP ↔ Plugin communication
  */
 
-import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType, ComponentPropertyType, ConstraintType } from './figma';
+import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType, ComponentPropertyType, ConstraintType, GradientStop } from './figma';
 
 // ============================================================================
 // Command Types (All supported commands)
@@ -151,12 +151,12 @@ export interface CommandParams {
     collectionId: string;
     name: string;
     resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
-    value?: VariableValue;
+    value?: VariableValueInput;
   };
   set_variable_value: {
     variableId: string;
     modeId: string;
-    value: VariableValue;
+    value: VariableValueInput;
   };
   delete_variable: {
     variableId: string;
@@ -618,6 +618,11 @@ export interface CommandParams {
     format?: ExportFormat;
     scale?: number;
   };
+
+  // WebSocket Channel Management (MCP server only)
+  join: {
+    channel: string;
+  };
 }
 
 // ============================================================================
@@ -718,7 +723,7 @@ export interface AnnotationInfo {
 // Variable Types (Design Tokens)
 // ============================================================================
 
-export type VariableValue =
+export type VariableValueInput =
   | { r: number; g: number; b: number; a?: number }  // COLOR
   | number  // FLOAT
   | string  // STRING
@@ -818,10 +823,7 @@ export interface PaintStyleInfo {
   gradientStops?: Array<{ position: number; color: RGBA }>;
 }
 
-export interface GradientStop {
-  position: number;
-  color: RGBA;
-}
+// GradientStop is re-exported from figma.ts
 
 // ============================================================================
 // Effect Style Types

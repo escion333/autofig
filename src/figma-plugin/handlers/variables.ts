@@ -7,7 +7,7 @@ import type {
   VariableCollectionInfo,
   VariableInfo,
   VariableModeInfo,
-  VariableValue,
+  VariableValueInput,
   VariableBindableField,
 } from '../../shared/types';
 
@@ -316,15 +316,21 @@ export async function getBoundVariables(
     for (const [field, bindings] of Object.entries(node.boundVariables)) {
       if (bindings) {
         const bindingArray = Array.isArray(bindings) ? bindings : [bindings];
-        boundVariables[field] = await Promise.all(
-          bindingArray.map(async (binding: { id: string }) => {
-            const variable = await figma.variables.getVariableByIdAsync(binding.id);
-            return {
-              variableId: binding.id,
+        const results: { variableId: string; variableName?: string }[] = [];
+        
+        for (const binding of bindingArray) {
+          // Handle VariableAlias (has 'id' property) vs nested objects
+          if (binding && typeof binding === 'object' && 'id' in binding) {
+            const variableAlias = binding as { id: string };
+            const variable = await figma.variables.getVariableByIdAsync(variableAlias.id);
+            results.push({
+              variableId: variableAlias.id,
               variableName: variable?.name,
-            };
-          })
-        );
+            });
+          }
+        }
+        
+        boundVariables[field] = results;
       }
     }
   }
@@ -430,10 +436,10 @@ export async function unbindVariable(
 // =============================================================================
 
 /**
- * Convert a VariableValue to Figma's expected format
+ * Convert a VariableValueInput to Figma's expected format
  */
 function convertToFigmaValue(
-  value: VariableValue,
+  value: VariableValueInput,
   resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
 ): RGB | RGBA | number | string | boolean {
   if (resolvedType === 'COLOR') {
