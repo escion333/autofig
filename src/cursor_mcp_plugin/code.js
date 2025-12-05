@@ -413,13 +413,16 @@
       throw new Error(`Node is not a text node: ${nodeId}`);
     }
     try {
-      await figma.loadFontAsync(node.fontName);
-      await setCharacters(node, text);
+      const textNode = node;
+      if (textNode.fontName !== figma.mixed) {
+        await figma.loadFontAsync(textNode.fontName);
+      }
+      await setCharacters(textNode, text);
       return {
         id: node.id,
         name: node.name,
-        characters: node.characters,
-        fontName: node.fontName
+        characters: textNode.characters,
+        fontName: textNode.fontName
       };
     } catch (error) {
       throw new Error(`Error setting text content: ${error.message}`);
@@ -549,8 +552,11 @@
           if (node.type !== "TEXT") {
             return { success: false, nodeId, error: `Node is not a text node: ${nodeId}` };
           }
-          await figma.loadFontAsync(node.fontName);
-          await setCharacters(node, text);
+          const textNode = node;
+          if (textNode.fontName !== figma.mixed) {
+            await figma.loadFontAsync(textNode.fontName);
+          }
+          await setCharacters(textNode, text);
           return { success: true, nodeId, nodeName: node.name };
         } catch (error) {
           return { success: false, nodeId, error: error.message };
@@ -830,6 +836,379 @@
     };
   }
   __name(createText, "createText");
+  async function createPolygon(params) {
+    const {
+      x = 0,
+      y = 0,
+      pointCount = 6,
+      radius = 50,
+      name = "Polygon",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    const polygon = figma.createPolygon();
+    polygon.x = x;
+    polygon.y = y;
+    polygon.resize(radius * 2, radius * 2);
+    polygon.pointCount = Math.max(3, Math.min(100, pointCount));
+    polygon.name = name;
+    if (fillColor) {
+      polygon.fills = [{
+        type: "SOLID",
+        color: {
+          r: fillColor.r ?? 0,
+          g: fillColor.g ?? 0,
+          b: fillColor.b ?? 0
+        },
+        opacity: fillColor.a ?? 1
+      }];
+    }
+    if (strokeColor) {
+      polygon.strokes = [{
+        type: "SOLID",
+        color: {
+          r: strokeColor.r ?? 0,
+          g: strokeColor.g ?? 0,
+          b: strokeColor.b ?? 0
+        },
+        opacity: strokeColor.a ?? 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      polygon.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(polygon);
+    return {
+      id: polygon.id,
+      name: polygon.name,
+      x: polygon.x,
+      y: polygon.y,
+      width: polygon.width,
+      height: polygon.height,
+      pointCount: polygon.pointCount,
+      parentId: polygon.parent?.id
+    };
+  }
+  __name(createPolygon, "createPolygon");
+  async function createStar(params) {
+    const {
+      x = 0,
+      y = 0,
+      pointCount = 5,
+      innerRadius = 25,
+      outerRadius = 50,
+      name = "Star",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    const star = figma.createStar();
+    star.x = x;
+    star.y = y;
+    star.resize(outerRadius * 2, outerRadius * 2);
+    star.pointCount = Math.max(3, Math.min(100, pointCount));
+    star.innerRadius = innerRadius / outerRadius;
+    star.name = name;
+    if (fillColor) {
+      star.fills = [{
+        type: "SOLID",
+        color: {
+          r: fillColor.r ?? 0,
+          g: fillColor.g ?? 0,
+          b: fillColor.b ?? 0
+        },
+        opacity: fillColor.a ?? 1
+      }];
+    }
+    if (strokeColor) {
+      star.strokes = [{
+        type: "SOLID",
+        color: {
+          r: strokeColor.r ?? 0,
+          g: strokeColor.g ?? 0,
+          b: strokeColor.b ?? 0
+        },
+        opacity: strokeColor.a ?? 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      star.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(star);
+    return {
+      id: star.id,
+      name: star.name,
+      x: star.x,
+      y: star.y,
+      width: star.width,
+      height: star.height,
+      pointCount: star.pointCount,
+      innerRadius: star.innerRadius,
+      parentId: star.parent?.id
+    };
+  }
+  __name(createStar, "createStar");
+  async function createLine(params) {
+    const {
+      startX = 0,
+      startY = 0,
+      endX = 100,
+      endY = 0,
+      name = "Line",
+      parentId,
+      strokeColor,
+      strokeWeight = 1
+    } = params || {};
+    const line = figma.createLine();
+    line.x = startX;
+    line.y = startY;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    line.resize(length, 0);
+    line.rotation = angle;
+    line.name = name;
+    line.strokes = [{
+      type: "SOLID",
+      color: strokeColor ? {
+        r: strokeColor.r ?? 0,
+        g: strokeColor.g ?? 0,
+        b: strokeColor.b ?? 0
+      } : { r: 0, g: 0, b: 0 },
+      opacity: strokeColor?.a ?? 1
+    }];
+    line.strokeWeight = strokeWeight;
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(line);
+    return {
+      id: line.id,
+      name: line.name,
+      x: line.x,
+      y: line.y,
+      width: line.width,
+      rotation: line.rotation,
+      strokeWeight: line.strokeWeight,
+      parentId: line.parent?.id
+    };
+  }
+  __name(createLine, "createLine");
+  async function createVector(params) {
+    const {
+      x = 0,
+      y = 0,
+      pathData,
+      name = "Vector",
+      parentId,
+      fillColor,
+      strokeColor,
+      strokeWeight
+    } = params || {};
+    if (!pathData) {
+      throw new Error("Missing pathData parameter");
+    }
+    const vector = figma.createVector();
+    vector.x = x;
+    vector.y = y;
+    vector.name = name;
+    try {
+      vector.vectorPaths = [{
+        windingRule: "NONZERO",
+        data: pathData
+      }];
+    } catch (error) {
+      throw new Error(`Invalid path data: ${error.message}`);
+    }
+    if (fillColor) {
+      vector.fills = [{
+        type: "SOLID",
+        color: {
+          r: fillColor.r ?? 0,
+          g: fillColor.g ?? 0,
+          b: fillColor.b ?? 0
+        },
+        opacity: fillColor.a ?? 1
+      }];
+    } else {
+      vector.fills = [];
+    }
+    if (strokeColor) {
+      vector.strokes = [{
+        type: "SOLID",
+        color: {
+          r: strokeColor.r ?? 0,
+          g: strokeColor.g ?? 0,
+          b: strokeColor.b ?? 0
+        },
+        opacity: strokeColor.a ?? 1
+      }];
+    }
+    if (strokeWeight !== void 0) {
+      vector.strokeWeight = strokeWeight;
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(vector);
+    return {
+      id: vector.id,
+      name: vector.name,
+      x: vector.x,
+      y: vector.y,
+      width: vector.width,
+      height: vector.height,
+      parentId: vector.parent?.id
+    };
+  }
+  __name(createVector, "createVector");
+
+  // src/figma-plugin/handlers/vectors.ts
+  async function booleanOperation(params) {
+    const { nodeIds, operation, name } = params;
+    if (!nodeIds || nodeIds.length < 2) {
+      throw new Error("At least 2 nodes are required for boolean operations");
+    }
+    if (!operation) {
+      throw new Error("Missing operation parameter");
+    }
+    const nodes = [];
+    for (const nodeId of nodeIds) {
+      const node = await getNodeById(nodeId);
+      if (!("type" in node)) {
+        throw new Error(`Node ${nodeId} is not a valid scene node`);
+      }
+      nodes.push(node);
+    }
+    const parent = nodes[0].parent;
+    for (const node of nodes) {
+      if (node.parent !== parent) {
+        throw new Error("All nodes must have the same parent for boolean operations");
+      }
+    }
+    let booleanResult;
+    switch (operation) {
+      case "UNION":
+        booleanResult = figma.union(nodes, parent);
+        break;
+      case "SUBTRACT":
+        booleanResult = figma.subtract(nodes, parent);
+        break;
+      case "INTERSECT":
+        booleanResult = figma.intersect(nodes, parent);
+        break;
+      case "EXCLUDE":
+        booleanResult = figma.exclude(nodes, parent);
+        break;
+      default:
+        throw new Error(`Unknown boolean operation: ${operation}`);
+    }
+    if (name) {
+      booleanResult.name = name;
+    } else {
+      booleanResult.name = `${operation} Result`;
+    }
+    return {
+      id: booleanResult.id,
+      name: booleanResult.name,
+      type: booleanResult.type,
+      x: booleanResult.x,
+      y: booleanResult.y,
+      width: booleanResult.width,
+      height: booleanResult.height,
+      booleanOperation: booleanResult.booleanOperation,
+      parentId: booleanResult.parent?.id
+    };
+  }
+  __name(booleanOperation, "booleanOperation");
+  async function flattenNode(params) {
+    const { nodeId } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await getNodeById(nodeId);
+    if (!("type" in node)) {
+      throw new Error(`Node ${nodeId} cannot be flattened`);
+    }
+    const sceneNode = node;
+    const flattenedNodes = figma.flatten([sceneNode]);
+    return {
+      id: flattenedNodes.id,
+      name: flattenedNodes.name,
+      type: flattenedNodes.type,
+      x: flattenedNodes.x,
+      y: flattenedNodes.y,
+      width: flattenedNodes.width,
+      height: flattenedNodes.height,
+      parentId: flattenedNodes.parent?.id
+    };
+  }
+  __name(flattenNode, "flattenNode");
+  async function outlineStroke(params) {
+    const { nodeId } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "outlineStroke", `Node "${node.name}" does not support outline stroke`);
+    const outlinedNode = node.outlineStroke();
+    if (!outlinedNode) {
+      throw new Error("Failed to outline stroke - node may not have a stroke");
+    }
+    return {
+      id: outlinedNode.id,
+      name: outlinedNode.name,
+      type: outlinedNode.type,
+      x: outlinedNode.x,
+      y: outlinedNode.y,
+      width: outlinedNode.width,
+      height: outlinedNode.height,
+      parentId: outlinedNode.parent?.id
+    };
+  }
+  __name(outlineStroke, "outlineStroke");
+  async function setImageFill(params) {
+    const { nodeId, imageData, scaleMode = "FILL" } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!imageData) {
+      throw new Error("Missing imageData parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "fills", `Node "${node.name}" does not support fills`);
+    let imageBytes;
+    try {
+      let base64Data = imageData;
+      if (imageData.includes(",")) {
+        base64Data = imageData.split(",")[1];
+      }
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      imageBytes = bytes;
+    } catch (error) {
+      throw new Error(`Invalid base64 image data: ${error.message}`);
+    }
+    const imageHash = figma.createImage(imageBytes).hash;
+    const imagePaint = {
+      type: "IMAGE",
+      scaleMode,
+      imageHash
+    };
+    node.fills = [imagePaint];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      scaleMode
+    };
+  }
+  __name(setImageFill, "setImageFill");
 
   // src/figma-plugin/handlers/styling.ts
   async function setFillColor(params) {
@@ -1584,6 +1963,539 @@
   }
   __name(setTextProperties, "setTextProperties");
 
+  // src/figma-plugin/handlers/paint-styles.ts
+  async function getPaintStyles() {
+    const paintStyles = await figma.getLocalPaintStylesAsync();
+    const styles = paintStyles.map((style) => {
+      const paint = style.paints[0];
+      const result = {
+        id: style.id,
+        name: style.name,
+        key: style.key,
+        type: paint?.type === "SOLID" ? "SOLID" : paint?.type || "SOLID"
+      };
+      if (paint?.type === "SOLID") {
+        result.color = {
+          r: paint.color.r,
+          g: paint.color.g,
+          b: paint.color.b,
+          a: paint.opacity ?? 1
+        };
+      } else if (paint?.type?.startsWith("GRADIENT_")) {
+        result.gradientStops = paint.gradientStops.map((stop) => ({
+          position: stop.position,
+          color: {
+            r: stop.color.r,
+            g: stop.color.g,
+            b: stop.color.b,
+            a: stop.color.a ?? 1
+          }
+        }));
+      }
+      return result;
+    });
+    return {
+      count: styles.length,
+      styles
+    };
+  }
+  __name(getPaintStyles, "getPaintStyles");
+  async function createPaintStyle(params) {
+    const { name, color } = params;
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    if (!color) {
+      throw new Error("Missing color parameter");
+    }
+    const style = figma.createPaintStyle();
+    style.name = name;
+    const paint = {
+      type: "SOLID",
+      color: {
+        r: color.r ?? 0,
+        g: color.g ?? 0,
+        b: color.b ?? 0
+      },
+      opacity: color.a ?? 1
+    };
+    style.paints = [paint];
+    return {
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      type: "SOLID",
+      color: {
+        r: paint.color.r,
+        g: paint.color.g,
+        b: paint.color.b,
+        a: paint.opacity ?? 1
+      }
+    };
+  }
+  __name(createPaintStyle, "createPaintStyle");
+  async function updatePaintStyle(params) {
+    const { styleId, name, color } = params;
+    if (!styleId) {
+      throw new Error("Missing styleId parameter");
+    }
+    const style = figma.getStyleById(styleId);
+    if (!style) {
+      throw new Error(`Paint style not found: ${styleId}`);
+    }
+    if (style.type !== "PAINT") {
+      throw new Error(`Style is not a paint style: ${styleId} (type: ${style.type})`);
+    }
+    if (name !== void 0) {
+      style.name = name;
+    }
+    if (color !== void 0) {
+      const paint = {
+        type: "SOLID",
+        color: {
+          r: color.r ?? 0,
+          g: color.g ?? 0,
+          b: color.b ?? 0
+        },
+        opacity: color.a ?? 1
+      };
+      style.paints = [paint];
+    }
+    const currentPaint = style.paints[0];
+    const result = {
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      type: currentPaint?.type === "SOLID" ? "SOLID" : currentPaint?.type || "SOLID"
+    };
+    if (currentPaint?.type === "SOLID") {
+      result.color = {
+        r: currentPaint.color.r,
+        g: currentPaint.color.g,
+        b: currentPaint.color.b,
+        a: currentPaint.opacity ?? 1
+      };
+    }
+    return result;
+  }
+  __name(updatePaintStyle, "updatePaintStyle");
+  async function applyPaintStyle(params) {
+    const { nodeId, styleId, styleName, property = "fills" } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!styleId && !styleName) {
+      throw new Error("Either styleId or styleName must be provided");
+    }
+    let style = null;
+    if (styleId) {
+      const foundStyle = figma.getStyleById(styleId);
+      if (foundStyle && foundStyle.type === "PAINT") {
+        style = foundStyle;
+      }
+    } else if (styleName) {
+      const paintStyles = await figma.getLocalPaintStylesAsync();
+      style = paintStyles.find((s) => s.name === styleName) || null;
+    }
+    if (!style) {
+      throw new Error(`Paint style not found: ${styleId || styleName}`);
+    }
+    const node = await getNodeById(nodeId);
+    if (property === "fills") {
+      assertNodeCapability(node, "fillStyleId", `Node "${node.name}" does not support fill styles`);
+      node.fillStyleId = style.id;
+    } else {
+      assertNodeCapability(node, "strokeStyleId", `Node "${node.name}" does not support stroke styles`);
+      node.strokeStyleId = style.id;
+    }
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      styleId: style.id,
+      styleName: style.name,
+      property
+    };
+  }
+  __name(applyPaintStyle, "applyPaintStyle");
+  async function deletePaintStyle(params) {
+    const { styleId } = params;
+    if (!styleId) {
+      throw new Error("Missing styleId parameter");
+    }
+    const style = figma.getStyleById(styleId);
+    if (!style) {
+      throw new Error(`Paint style not found: ${styleId}`);
+    }
+    if (style.type !== "PAINT") {
+      throw new Error(`Style is not a paint style: ${styleId} (type: ${style.type})`);
+    }
+    const styleName = style.name;
+    style.remove();
+    return {
+      success: true,
+      styleId,
+      styleName
+    };
+  }
+  __name(deletePaintStyle, "deletePaintStyle");
+  async function setGradientFill(params) {
+    const { nodeId, gradientType, stops, angle = 0 } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!gradientType) {
+      throw new Error("Missing gradientType parameter");
+    }
+    if (!stops || stops.length < 2) {
+      throw new Error("At least 2 gradient stops are required");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "fills", `Node "${node.name}" does not support fills`);
+    const figmaGradientType = `GRADIENT_${gradientType}`;
+    const radians = angle * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const gradientTransform = [
+      [cos, sin, 0.5 - 0.5 * cos - 0.5 * sin],
+      [-sin, cos, 0.5 + 0.5 * sin - 0.5 * cos]
+    ];
+    const gradientPaint = {
+      type: figmaGradientType,
+      gradientStops: stops.map((stop) => ({
+        position: Math.max(0, Math.min(1, stop.position)),
+        color: {
+          r: stop.color.r ?? 0,
+          g: stop.color.g ?? 0,
+          b: stop.color.b ?? 0,
+          a: stop.color.a ?? 1
+        }
+      })),
+      gradientTransform: gradientType === "LINEAR" ? gradientTransform : void 0
+    };
+    node.fills = [gradientPaint];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      gradientType: figmaGradientType,
+      stopsCount: stops.length
+    };
+  }
+  __name(setGradientFill, "setGradientFill");
+
+  // src/figma-plugin/handlers/effects.ts
+  function effectInputToFigmaEffect(input) {
+    const visible = input.visible ?? true;
+    switch (input.type) {
+      case "DROP_SHADOW":
+        return {
+          type: "DROP_SHADOW",
+          color: {
+            r: input.color?.r ?? 0,
+            g: input.color?.g ?? 0,
+            b: input.color?.b ?? 0,
+            a: input.color?.a ?? 0.25
+          },
+          offset: {
+            x: input.offsetX ?? 0,
+            y: input.offsetY ?? 4
+          },
+          radius: input.radius ?? 4,
+          spread: input.spread ?? 0,
+          visible,
+          blendMode: "NORMAL"
+        };
+      case "INNER_SHADOW":
+        return {
+          type: "INNER_SHADOW",
+          color: {
+            r: input.color?.r ?? 0,
+            g: input.color?.g ?? 0,
+            b: input.color?.b ?? 0,
+            a: input.color?.a ?? 0.25
+          },
+          offset: {
+            x: input.offsetX ?? 0,
+            y: input.offsetY ?? 2
+          },
+          radius: input.radius ?? 4,
+          spread: input.spread ?? 0,
+          visible,
+          blendMode: "NORMAL"
+        };
+      case "LAYER_BLUR":
+        return {
+          type: "LAYER_BLUR",
+          radius: input.radius ?? 4,
+          visible
+        };
+      case "BACKGROUND_BLUR":
+        return {
+          type: "BACKGROUND_BLUR",
+          radius: input.radius ?? 10,
+          visible
+        };
+      default:
+        throw new Error(`Unknown effect type: ${input.type}`);
+    }
+  }
+  __name(effectInputToFigmaEffect, "effectInputToFigmaEffect");
+  function figmaEffectToOutput(effect) {
+    const result = {
+      type: effect.type,
+      visible: effect.visible
+    };
+    if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+      const shadowEffect = effect;
+      result.color = {
+        r: shadowEffect.color.r,
+        g: shadowEffect.color.g,
+        b: shadowEffect.color.b,
+        a: shadowEffect.color.a
+      };
+      result.offset = {
+        x: shadowEffect.offset.x,
+        y: shadowEffect.offset.y
+      };
+      result.radius = shadowEffect.radius;
+      result.spread = shadowEffect.spread;
+    } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+      const blurEffect = effect;
+      result.radius = blurEffect.radius;
+    }
+    return result;
+  }
+  __name(figmaEffectToOutput, "figmaEffectToOutput");
+  async function getEffectStyles() {
+    const effectStyles = await figma.getLocalEffectStylesAsync();
+    const styles = effectStyles.map((style) => ({
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      effects: style.effects.map(figmaEffectToOutput)
+    }));
+    return {
+      count: styles.length,
+      styles
+    };
+  }
+  __name(getEffectStyles, "getEffectStyles");
+  async function createEffectStyle(params) {
+    const { name, effects } = params;
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    if (!effects || effects.length === 0) {
+      throw new Error("Missing effects parameter - at least one effect is required");
+    }
+    const style = figma.createEffectStyle();
+    style.name = name;
+    style.effects = effects.map(effectInputToFigmaEffect);
+    return {
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      effects: style.effects.map(figmaEffectToOutput)
+    };
+  }
+  __name(createEffectStyle, "createEffectStyle");
+  async function applyEffectStyle(params) {
+    const { nodeId, styleId, styleName } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!styleId && !styleName) {
+      throw new Error("Either styleId or styleName must be provided");
+    }
+    let style = null;
+    if (styleId) {
+      const foundStyle = figma.getStyleById(styleId);
+      if (foundStyle && foundStyle.type === "EFFECT") {
+        style = foundStyle;
+      }
+    } else if (styleName) {
+      const effectStyles = await figma.getLocalEffectStylesAsync();
+      style = effectStyles.find((s) => s.name === styleName) || null;
+    }
+    if (!style) {
+      throw new Error(`Effect style not found: ${styleId || styleName}`);
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effectStyleId", `Node "${node.name}" does not support effect styles`);
+    node.effectStyleId = style.id;
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      styleId: style.id,
+      styleName: style.name
+    };
+  }
+  __name(applyEffectStyle, "applyEffectStyle");
+  async function deleteEffectStyle(params) {
+    const { styleId } = params;
+    if (!styleId) {
+      throw new Error("Missing styleId parameter");
+    }
+    const style = figma.getStyleById(styleId);
+    if (!style) {
+      throw new Error(`Effect style not found: ${styleId}`);
+    }
+    if (style.type !== "EFFECT") {
+      throw new Error(`Style is not an effect style: ${styleId} (type: ${style.type})`);
+    }
+    const styleName = style.name;
+    style.remove();
+    return {
+      success: true,
+      styleId,
+      styleName
+    };
+  }
+  __name(deleteEffectStyle, "deleteEffectStyle");
+  async function setEffects(params) {
+    const { nodeId, effects } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!effects) {
+      throw new Error("Missing effects parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
+    node.effects = effects.map(effectInputToFigmaEffect);
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      effectsCount: effects.length
+    };
+  }
+  __name(setEffects, "setEffects");
+  async function addDropShadow(params) {
+    const { nodeId, color, offsetX = 0, offsetY = 4, radius = 4, spread = 0, visible = true } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!color) {
+      throw new Error("Missing color parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
+    const blendNode = node;
+    const existingEffects = [...blendNode.effects];
+    const newShadow = {
+      type: "DROP_SHADOW",
+      color: {
+        r: color.r ?? 0,
+        g: color.g ?? 0,
+        b: color.b ?? 0,
+        a: color.a ?? 0.25
+      },
+      offset: { x: offsetX, y: offsetY },
+      radius,
+      spread,
+      visible,
+      blendMode: "NORMAL"
+    };
+    blendNode.effects = [...existingEffects, newShadow];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      effectsCount: blendNode.effects.length
+    };
+  }
+  __name(addDropShadow, "addDropShadow");
+  async function addInnerShadow(params) {
+    const { nodeId, color, offsetX = 0, offsetY = 2, radius = 4, spread = 0, visible = true } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!color) {
+      throw new Error("Missing color parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
+    const blendNode = node;
+    const existingEffects = [...blendNode.effects];
+    const newShadow = {
+      type: "INNER_SHADOW",
+      color: {
+        r: color.r ?? 0,
+        g: color.g ?? 0,
+        b: color.b ?? 0,
+        a: color.a ?? 0.25
+      },
+      offset: { x: offsetX, y: offsetY },
+      radius,
+      spread,
+      visible,
+      blendMode: "NORMAL"
+    };
+    blendNode.effects = [...existingEffects, newShadow];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      effectsCount: blendNode.effects.length
+    };
+  }
+  __name(addInnerShadow, "addInnerShadow");
+  async function addLayerBlur(params) {
+    const { nodeId, radius, visible = true } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (radius === void 0 || radius === null) {
+      throw new Error("Missing radius parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
+    const blendNode = node;
+    const existingEffects = [...blendNode.effects];
+    const newBlur = {
+      type: "LAYER_BLUR",
+      radius,
+      visible
+    };
+    blendNode.effects = [...existingEffects, newBlur];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      effectsCount: blendNode.effects.length
+    };
+  }
+  __name(addLayerBlur, "addLayerBlur");
+  async function addBackgroundBlur(params) {
+    const { nodeId, radius, visible = true } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (radius === void 0 || radius === null) {
+      throw new Error("Missing radius parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
+    const blendNode = node;
+    const existingEffects = [...blendNode.effects];
+    const newBlur = {
+      type: "BACKGROUND_BLUR",
+      radius,
+      visible
+    };
+    blendNode.effects = [...existingEffects, newBlur];
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      effectsCount: blendNode.effects.length
+    };
+  }
+  __name(addBackgroundBlur, "addBackgroundBlur");
+
   // src/figma-plugin/handlers/layout.ts
   async function moveNode(params) {
     const { nodeId, x, y } = params || {};
@@ -1757,6 +2669,205 @@
     };
   }
   __name(cloneNode, "cloneNode");
+  async function getConstraints(params) {
+    const { nodeId } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "constraints", `Node "${node.name}" does not support constraints`);
+    const constrainedNode = node;
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      horizontal: constrainedNode.constraints.horizontal,
+      vertical: constrainedNode.constraints.vertical
+    };
+  }
+  __name(getConstraints, "getConstraints");
+  async function setConstraints(params) {
+    const { nodeId, horizontal, vertical } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (horizontal === void 0 && vertical === void 0) {
+      throw new Error("At least one constraint (horizontal or vertical) must be provided");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "constraints", `Node "${node.name}" does not support constraints`);
+    const constrainedNode = node;
+    const currentConstraints = { ...constrainedNode.constraints };
+    constrainedNode.constraints = {
+      horizontal: horizontal ?? currentConstraints.horizontal,
+      vertical: vertical ?? currentConstraints.vertical
+    };
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      horizontal: constrainedNode.constraints.horizontal,
+      vertical: constrainedNode.constraints.vertical
+    };
+  }
+  __name(setConstraints, "setConstraints");
+
+  // src/figma-plugin/handlers/grid-styles.ts
+  function layoutGridInputToFigma(input) {
+    const baseGrid = {
+      visible: input.visible ?? true,
+      color: input.color ? {
+        r: input.color.r ?? 1,
+        g: input.color.g ?? 0,
+        b: input.color.b ?? 0,
+        a: input.color.a ?? 0.1
+      } : { r: 1, g: 0, b: 0, a: 0.1 }
+    };
+    if (input.pattern === "GRID") {
+      return {
+        ...baseGrid,
+        pattern: "GRID",
+        sectionSize: input.sectionSize ?? 10
+      };
+    }
+    return {
+      ...baseGrid,
+      pattern: input.pattern,
+      alignment: input.alignment ?? "STRETCH",
+      gutterSize: input.gutterSize ?? 20,
+      count: input.count ?? 12,
+      sectionSize: input.sectionSize ?? 1,
+      offset: input.offset ?? 0
+    };
+  }
+  __name(layoutGridInputToFigma, "layoutGridInputToFigma");
+  function figmaLayoutGridToOutput(grid) {
+    const result = {
+      pattern: grid.pattern,
+      visible: grid.visible,
+      color: grid.color ? {
+        r: grid.color.r,
+        g: grid.color.g,
+        b: grid.color.b,
+        a: grid.color.a
+      } : void 0
+    };
+    if (grid.pattern === "GRID") {
+      result.sectionSize = grid.sectionSize;
+    } else {
+      result.alignment = grid.alignment;
+      result.gutterSize = grid.gutterSize;
+      result.count = grid.count;
+      result.sectionSize = grid.sectionSize;
+      result.offset = grid.offset;
+    }
+    return result;
+  }
+  __name(figmaLayoutGridToOutput, "figmaLayoutGridToOutput");
+  async function getGridStyles() {
+    const gridStyles = await figma.getLocalGridStylesAsync();
+    const styles = gridStyles.map((style) => ({
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      grids: style.layoutGrids.map(figmaLayoutGridToOutput)
+    }));
+    return {
+      count: styles.length,
+      styles
+    };
+  }
+  __name(getGridStyles, "getGridStyles");
+  async function createGridStyle(params) {
+    const { name, grids } = params;
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    if (!grids || grids.length === 0) {
+      throw new Error("Missing grids parameter - at least one grid is required");
+    }
+    const style = figma.createGridStyle();
+    style.name = name;
+    style.layoutGrids = grids.map(layoutGridInputToFigma);
+    return {
+      id: style.id,
+      name: style.name,
+      key: style.key,
+      grids: style.layoutGrids.map(figmaLayoutGridToOutput)
+    };
+  }
+  __name(createGridStyle, "createGridStyle");
+  async function applyGridStyle(params) {
+    const { nodeId, styleId, styleName } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!styleId && !styleName) {
+      throw new Error("Either styleId or styleName must be provided");
+    }
+    let style = null;
+    if (styleId) {
+      const foundStyle = figma.getStyleById(styleId);
+      if (foundStyle && foundStyle.type === "GRID") {
+        style = foundStyle;
+      }
+    } else if (styleName) {
+      const gridStyles = await figma.getLocalGridStylesAsync();
+      style = gridStyles.find((s) => s.name === styleName) || null;
+    }
+    if (!style) {
+      throw new Error(`Grid style not found: ${styleId || styleName}`);
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "gridStyleId", `Node "${node.name}" does not support grid styles (must be a frame)`);
+    node.gridStyleId = style.id;
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      styleId: style.id,
+      styleName: style.name
+    };
+  }
+  __name(applyGridStyle, "applyGridStyle");
+  async function deleteGridStyle(params) {
+    const { styleId } = params;
+    if (!styleId) {
+      throw new Error("Missing styleId parameter");
+    }
+    const style = figma.getStyleById(styleId);
+    if (!style) {
+      throw new Error(`Grid style not found: ${styleId}`);
+    }
+    if (style.type !== "GRID") {
+      throw new Error(`Style is not a grid style: ${styleId} (type: ${style.type})`);
+    }
+    const styleName = style.name;
+    style.remove();
+    return {
+      success: true,
+      styleId,
+      styleName
+    };
+  }
+  __name(deleteGridStyle, "deleteGridStyle");
+  async function setLayoutGrids(params) {
+    const { nodeId, grids } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!grids) {
+      throw new Error("Missing grids parameter");
+    }
+    const node = await getNodeById(nodeId);
+    assertNodeCapability(node, "layoutGrids", `Node "${node.name}" does not support layout grids (must be a frame)`);
+    node.layoutGrids = grids.map(layoutGridInputToFigma);
+    return {
+      success: true,
+      nodeId: node.id,
+      nodeName: node.name,
+      gridsCount: grids.length
+    };
+  }
+  __name(setLayoutGrids, "setLayoutGrids");
 
   // src/figma-plugin/handlers/auto-layout.ts
   function assertAutoLayoutSupport(node) {
@@ -2800,6 +3911,24 @@
         return await createText(params);
       case "create_ellipse":
         return await createEllipse(params);
+      case "create_polygon":
+        return await createPolygon(params);
+      case "create_star":
+        return await createStar(params);
+      case "create_line":
+        return await createLine(params);
+      case "create_vector":
+        return await createVector(params);
+      // Boolean Operations
+      case "boolean_operation":
+        return await booleanOperation(params);
+      case "flatten_node":
+        return await flattenNode(params);
+      case "outline_stroke":
+        return await outlineStroke(params);
+      // Images
+      case "set_image_fill":
+        return await setImageFill(params);
       // Styling
       case "set_fill_color":
         return await setFillColor(params);
@@ -2846,6 +3975,54 @@
         return await applyTextStyle(params);
       case "set_text_properties":
         return await setTextProperties(params);
+      // Paint Styles
+      case "get_paint_styles":
+        return await getPaintStyles();
+      case "create_paint_style":
+        return await createPaintStyle(params);
+      case "update_paint_style":
+        return await updatePaintStyle(params);
+      case "apply_paint_style":
+        return await applyPaintStyle(params);
+      case "delete_paint_style":
+        return await deletePaintStyle(params);
+      case "set_gradient_fill":
+        return await setGradientFill(params);
+      // Effect Styles
+      case "get_effect_styles":
+        return await getEffectStyles();
+      case "create_effect_style":
+        return await createEffectStyle(params);
+      case "apply_effect_style":
+        return await applyEffectStyle(params);
+      case "delete_effect_style":
+        return await deleteEffectStyle(params);
+      case "set_effects":
+        return await setEffects(params);
+      case "add_drop_shadow":
+        return await addDropShadow(params);
+      case "add_inner_shadow":
+        return await addInnerShadow(params);
+      case "add_layer_blur":
+        return await addLayerBlur(params);
+      case "add_background_blur":
+        return await addBackgroundBlur(params);
+      // Constraints
+      case "get_constraints":
+        return await getConstraints(params);
+      case "set_constraints":
+        return await setConstraints(params);
+      // Grid Styles
+      case "get_grid_styles":
+        return await getGridStyles();
+      case "create_grid_style":
+        return await createGridStyle(params);
+      case "apply_grid_style":
+        return await applyGridStyle(params);
+      case "delete_grid_style":
+        return await deleteGridStyle(params);
+      case "set_layout_grids":
+        return await setLayoutGrids(params);
       // Layout
       case "move_node":
         return await moveNode(params);

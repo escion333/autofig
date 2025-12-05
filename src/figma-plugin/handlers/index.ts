@@ -16,7 +16,10 @@ import {
 } from './document';
 
 // Element Creation
-import { createRectangle, createFrame, createText, createEllipse } from './creation';
+import { createRectangle, createFrame, createText, createEllipse, createPolygon, createStar, createLine, createVector } from './creation';
+
+// Vector Operations (Boolean, Flatten, Images)
+import { booleanOperation, flattenNode, outlineStroke, setImageFill } from './vectors';
 
 // Styling
 import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './styling';
@@ -47,8 +50,40 @@ import {
   setTextProperties,
 } from './typography';
 
-// Layout
-import { moveNode, resizeNode, deleteNode, deleteMultipleNodes, cloneNode } from './layout';
+// Paint Styles
+import {
+  getPaintStyles,
+  createPaintStyle,
+  updatePaintStyle,
+  applyPaintStyle,
+  deletePaintStyle,
+  setGradientFill,
+} from './paint-styles';
+
+// Effect Styles
+import {
+  getEffectStyles,
+  createEffectStyle,
+  applyEffectStyle,
+  deleteEffectStyle,
+  setEffects,
+  addDropShadow,
+  addInnerShadow,
+  addLayerBlur,
+  addBackgroundBlur,
+} from './effects';
+
+// Layout & Constraints
+import { moveNode, resizeNode, deleteNode, deleteMultipleNodes, cloneNode, getConstraints, setConstraints } from './layout';
+
+// Grid Styles
+import {
+  getGridStyles,
+  createGridStyle,
+  applyGridStyle,
+  deleteGridStyle,
+  setLayoutGrids,
+} from './grid-styles';
 
 // Auto Layout
 import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacing } from './auto-layout';
@@ -115,6 +150,26 @@ export async function handleCommand<T extends FigmaCommand>(
       return await createText(params as CommandParams['create_text']);
     case 'create_ellipse':
       return await createEllipse(params as CommandParams['create_ellipse']);
+    case 'create_polygon':
+      return await createPolygon(params as CommandParams['create_polygon']);
+    case 'create_star':
+      return await createStar(params as CommandParams['create_star']);
+    case 'create_line':
+      return await createLine(params as CommandParams['create_line']);
+    case 'create_vector':
+      return await createVector(params as CommandParams['create_vector']);
+
+    // Boolean Operations
+    case 'boolean_operation':
+      return await booleanOperation(params as CommandParams['boolean_operation']);
+    case 'flatten_node':
+      return await flattenNode(params as CommandParams['flatten_node']);
+    case 'outline_stroke':
+      return await outlineStroke(params as CommandParams['outline_stroke']);
+
+    // Images
+    case 'set_image_fill':
+      return await setImageFill(params as CommandParams['set_image_fill']);
 
     // Styling
     case 'set_fill_color':
@@ -165,6 +220,58 @@ export async function handleCommand<T extends FigmaCommand>(
       return await applyTextStyle(params as CommandParams['apply_text_style']);
     case 'set_text_properties':
       return await setTextProperties(params as CommandParams['set_text_properties']);
+
+    // Paint Styles
+    case 'get_paint_styles':
+      return await getPaintStyles();
+    case 'create_paint_style':
+      return await createPaintStyle(params as CommandParams['create_paint_style']);
+    case 'update_paint_style':
+      return await updatePaintStyle(params as CommandParams['update_paint_style']);
+    case 'apply_paint_style':
+      return await applyPaintStyle(params as CommandParams['apply_paint_style']);
+    case 'delete_paint_style':
+      return await deletePaintStyle(params as CommandParams['delete_paint_style']);
+    case 'set_gradient_fill':
+      return await setGradientFill(params as CommandParams['set_gradient_fill']);
+
+    // Effect Styles
+    case 'get_effect_styles':
+      return await getEffectStyles();
+    case 'create_effect_style':
+      return await createEffectStyle(params as CommandParams['create_effect_style']);
+    case 'apply_effect_style':
+      return await applyEffectStyle(params as CommandParams['apply_effect_style']);
+    case 'delete_effect_style':
+      return await deleteEffectStyle(params as CommandParams['delete_effect_style']);
+    case 'set_effects':
+      return await setEffects(params as CommandParams['set_effects']);
+    case 'add_drop_shadow':
+      return await addDropShadow(params as CommandParams['add_drop_shadow']);
+    case 'add_inner_shadow':
+      return await addInnerShadow(params as CommandParams['add_inner_shadow']);
+    case 'add_layer_blur':
+      return await addLayerBlur(params as CommandParams['add_layer_blur']);
+    case 'add_background_blur':
+      return await addBackgroundBlur(params as CommandParams['add_background_blur']);
+
+    // Constraints
+    case 'get_constraints':
+      return await getConstraints(params as CommandParams['get_constraints']);
+    case 'set_constraints':
+      return await setConstraints(params as CommandParams['set_constraints']);
+
+    // Grid Styles
+    case 'get_grid_styles':
+      return await getGridStyles();
+    case 'create_grid_style':
+      return await createGridStyle(params as CommandParams['create_grid_style']);
+    case 'apply_grid_style':
+      return await applyGridStyle(params as CommandParams['apply_grid_style']);
+    case 'delete_grid_style':
+      return await deleteGridStyle(params as CommandParams['delete_grid_style']);
+    case 'set_layout_grids':
+      return await setLayoutGrids(params as CommandParams['set_layout_grids']);
 
     // Layout
     case 'move_node':

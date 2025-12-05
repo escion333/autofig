@@ -293,3 +293,287 @@ export async function createText(params: CommandParams['create_text']): Promise<
     parentId: textNode.parent?.id,
   };
 }
+
+/**
+ * Create a polygon (regular polygon with N sides)
+ */
+export async function createPolygon(params: CommandParams['create_polygon']): Promise<NodeResult> {
+  const {
+    x = 0,
+    y = 0,
+    pointCount = 6,
+    radius = 50,
+    name = 'Polygon',
+    parentId,
+    fillColor,
+    strokeColor,
+    strokeWeight,
+  } = params || {};
+
+  const polygon = figma.createPolygon();
+  polygon.x = x;
+  polygon.y = y;
+  polygon.resize(radius * 2, radius * 2);
+  polygon.pointCount = Math.max(3, Math.min(100, pointCount));
+  polygon.name = name;
+
+  // Set fill color if provided
+  if (fillColor) {
+    polygon.fills = [{
+      type: 'SOLID',
+      color: {
+        r: fillColor.r ?? 0,
+        g: fillColor.g ?? 0,
+        b: fillColor.b ?? 0,
+      },
+      opacity: fillColor.a ?? 1,
+    }];
+  }
+
+  // Set stroke color if provided
+  if (strokeColor) {
+    polygon.strokes = [{
+      type: 'SOLID',
+      color: {
+        r: strokeColor.r ?? 0,
+        g: strokeColor.g ?? 0,
+        b: strokeColor.b ?? 0,
+      },
+      opacity: strokeColor.a ?? 1,
+    }];
+  }
+
+  // Set stroke weight if provided
+  if (strokeWeight !== undefined) {
+    polygon.strokeWeight = strokeWeight;
+  }
+
+  // Append to parent or current page
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(polygon);
+
+  return {
+    id: polygon.id,
+    name: polygon.name,
+    x: polygon.x,
+    y: polygon.y,
+    width: polygon.width,
+    height: polygon.height,
+    pointCount: polygon.pointCount,
+    parentId: polygon.parent?.id,
+  };
+}
+
+/**
+ * Create a star
+ */
+export async function createStar(params: CommandParams['create_star']): Promise<NodeResult> {
+  const {
+    x = 0,
+    y = 0,
+    pointCount = 5,
+    innerRadius = 25,
+    outerRadius = 50,
+    name = 'Star',
+    parentId,
+    fillColor,
+    strokeColor,
+    strokeWeight,
+  } = params || {};
+
+  const star = figma.createStar();
+  star.x = x;
+  star.y = y;
+  star.resize(outerRadius * 2, outerRadius * 2);
+  star.pointCount = Math.max(3, Math.min(100, pointCount));
+  star.innerRadius = innerRadius / outerRadius; // Figma uses ratio 0-1
+  star.name = name;
+
+  // Set fill color if provided
+  if (fillColor) {
+    star.fills = [{
+      type: 'SOLID',
+      color: {
+        r: fillColor.r ?? 0,
+        g: fillColor.g ?? 0,
+        b: fillColor.b ?? 0,
+      },
+      opacity: fillColor.a ?? 1,
+    }];
+  }
+
+  // Set stroke color if provided
+  if (strokeColor) {
+    star.strokes = [{
+      type: 'SOLID',
+      color: {
+        r: strokeColor.r ?? 0,
+        g: strokeColor.g ?? 0,
+        b: strokeColor.b ?? 0,
+      },
+      opacity: strokeColor.a ?? 1,
+    }];
+  }
+
+  // Set stroke weight if provided
+  if (strokeWeight !== undefined) {
+    star.strokeWeight = strokeWeight;
+  }
+
+  // Append to parent or current page
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(star);
+
+  return {
+    id: star.id,
+    name: star.name,
+    x: star.x,
+    y: star.y,
+    width: star.width,
+    height: star.height,
+    pointCount: star.pointCount,
+    innerRadius: star.innerRadius,
+    parentId: star.parent?.id,
+  };
+}
+
+/**
+ * Create a line
+ */
+export async function createLine(params: CommandParams['create_line']): Promise<NodeResult> {
+  const {
+    startX = 0,
+    startY = 0,
+    endX = 100,
+    endY = 0,
+    name = 'Line',
+    parentId,
+    strokeColor,
+    strokeWeight = 1,
+  } = params || {};
+
+  const line = figma.createLine();
+  line.x = startX;
+  line.y = startY;
+  
+  // Calculate line length and rotation
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  
+  line.resize(length, 0);
+  line.rotation = angle;
+  line.name = name;
+
+  // Set stroke color if provided (default black)
+  line.strokes = [{
+    type: 'SOLID',
+    color: strokeColor ? {
+      r: strokeColor.r ?? 0,
+      g: strokeColor.g ?? 0,
+      b: strokeColor.b ?? 0,
+    } : { r: 0, g: 0, b: 0 },
+    opacity: strokeColor?.a ?? 1,
+  }];
+
+  line.strokeWeight = strokeWeight;
+
+  // Append to parent or current page
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(line);
+
+  return {
+    id: line.id,
+    name: line.name,
+    x: line.x,
+    y: line.y,
+    width: line.width,
+    rotation: line.rotation,
+    strokeWeight: line.strokeWeight,
+    parentId: line.parent?.id,
+  };
+}
+
+/**
+ * Create a vector from SVG path data
+ */
+export async function createVector(params: CommandParams['create_vector']): Promise<NodeResult> {
+  const {
+    x = 0,
+    y = 0,
+    pathData,
+    name = 'Vector',
+    parentId,
+    fillColor,
+    strokeColor,
+    strokeWeight,
+  } = params || {};
+
+  if (!pathData) {
+    throw new Error('Missing pathData parameter');
+  }
+
+  const vector = figma.createVector();
+  vector.x = x;
+  vector.y = y;
+  vector.name = name;
+
+  // Set vector paths from SVG path data
+  try {
+    vector.vectorPaths = [{
+      windingRule: 'NONZERO',
+      data: pathData,
+    }];
+  } catch (error) {
+    throw new Error(`Invalid path data: ${(error as Error).message}`);
+  }
+
+  // Set fill color if provided
+  if (fillColor) {
+    vector.fills = [{
+      type: 'SOLID',
+      color: {
+        r: fillColor.r ?? 0,
+        g: fillColor.g ?? 0,
+        b: fillColor.b ?? 0,
+      },
+      opacity: fillColor.a ?? 1,
+    }];
+  } else {
+    // Default to no fill for vectors
+    vector.fills = [];
+  }
+
+  // Set stroke color if provided
+  if (strokeColor) {
+    vector.strokes = [{
+      type: 'SOLID',
+      color: {
+        r: strokeColor.r ?? 0,
+        g: strokeColor.g ?? 0,
+        b: strokeColor.b ?? 0,
+      },
+      opacity: strokeColor.a ?? 1,
+    }];
+  }
+
+  // Set stroke weight if provided
+  if (strokeWeight !== undefined) {
+    vector.strokeWeight = strokeWeight;
+  }
+
+  // Append to parent or current page
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(vector);
+
+  return {
+    id: vector.id,
+    name: vector.name,
+    x: vector.x,
+    y: vector.y,
+    width: vector.width,
+    height: vector.height,
+    parentId: vector.parent?.id,
+  };
+}

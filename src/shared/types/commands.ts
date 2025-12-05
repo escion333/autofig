@@ -2,7 +2,7 @@
  * Command and response type definitions for MCP ↔ Plugin communication
  */
 
-import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType, ComponentPropertyType } from './figma';
+import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType, ComponentPropertyType, ConstraintType } from './figma';
 
 // ============================================================================
 // Command Types (All supported commands)
@@ -47,6 +47,32 @@ export type FigmaCommand =
   | 'create_text_style'
   | 'apply_text_style'
   | 'set_text_properties'
+  // Paint Styles
+  | 'get_paint_styles'
+  | 'create_paint_style'
+  | 'update_paint_style'
+  | 'apply_paint_style'
+  | 'delete_paint_style'
+  | 'set_gradient_fill'
+  // Effect Styles
+  | 'get_effect_styles'
+  | 'create_effect_style'
+  | 'apply_effect_style'
+  | 'delete_effect_style'
+  | 'set_effects'
+  | 'add_drop_shadow'
+  | 'add_inner_shadow'
+  | 'add_layer_blur'
+  | 'add_background_blur'
+  // Constraints (Responsive)
+  | 'get_constraints'
+  | 'set_constraints'
+  // Grid Styles
+  | 'get_grid_styles'
+  | 'create_grid_style'
+  | 'apply_grid_style'
+  | 'delete_grid_style'
+  | 'set_layout_grids'
   // Layout
   | 'move_node'
   | 'resize_node'
@@ -192,6 +218,69 @@ export interface CommandParams {
     strokeColor?: RGBA;
     strokeWeight?: number;
   };
+  create_polygon: {
+    x?: number;
+    y?: number;
+    pointCount?: number;
+    radius?: number;
+    name?: string;
+    parentId?: string;
+    fillColor?: RGBA;
+    strokeColor?: RGBA;
+    strokeWeight?: number;
+  };
+  create_star: {
+    x?: number;
+    y?: number;
+    pointCount?: number;
+    innerRadius?: number;
+    outerRadius?: number;
+    name?: string;
+    parentId?: string;
+    fillColor?: RGBA;
+    strokeColor?: RGBA;
+    strokeWeight?: number;
+  };
+  create_line: {
+    startX?: number;
+    startY?: number;
+    endX?: number;
+    endY?: number;
+    name?: string;
+    parentId?: string;
+    strokeColor?: RGBA;
+    strokeWeight?: number;
+  };
+  create_vector: {
+    x?: number;
+    y?: number;
+    pathData: string;
+    name?: string;
+    parentId?: string;
+    fillColor?: RGBA;
+    strokeColor?: RGBA;
+    strokeWeight?: number;
+  };
+
+  // Boolean Operations
+  boolean_operation: {
+    nodeIds: string[];
+    operation: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'EXCLUDE';
+    name?: string;
+  };
+  flatten_node: {
+    nodeId: string;
+  };
+  outline_stroke: {
+    nodeId: string;
+  };
+
+  // Images
+  set_image_fill: {
+    nodeId: string;
+    imageData: string;
+    scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
+  };
 
   // Styling
   set_fill_color: {
@@ -262,6 +351,112 @@ export interface CommandParams {
     textDecoration?: 'NONE' | 'UNDERLINE' | 'STRIKETHROUGH';
     textAlignHorizontal?: 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED';
     textAlignVertical?: 'TOP' | 'CENTER' | 'BOTTOM';
+  };
+
+  // Paint Styles
+  get_paint_styles: Record<string, never>;
+  create_paint_style: {
+    name: string;
+    color: RGBA;
+  };
+  update_paint_style: {
+    styleId: string;
+    name?: string;
+    color?: RGBA;
+  };
+  apply_paint_style: {
+    nodeId: string;
+    styleId?: string;
+    styleName?: string;
+    property?: 'fills' | 'strokes';
+  };
+  delete_paint_style: {
+    styleId: string;
+  };
+  set_gradient_fill: {
+    nodeId: string;
+    gradientType: 'LINEAR' | 'RADIAL' | 'ANGULAR' | 'DIAMOND';
+    stops: Array<{
+      position: number;
+      color: RGBA;
+    }>;
+    angle?: number;
+  };
+
+  // Effect Styles
+  get_effect_styles: Record<string, never>;
+  create_effect_style: {
+    name: string;
+    effects: EffectInput[];
+  };
+  apply_effect_style: {
+    nodeId: string;
+    styleId?: string;
+    styleName?: string;
+  };
+  delete_effect_style: {
+    styleId: string;
+  };
+  set_effects: {
+    nodeId: string;
+    effects: EffectInput[];
+  };
+  add_drop_shadow: {
+    nodeId: string;
+    color: RGBA;
+    offsetX?: number;
+    offsetY?: number;
+    radius?: number;
+    spread?: number;
+    visible?: boolean;
+  };
+  add_inner_shadow: {
+    nodeId: string;
+    color: RGBA;
+    offsetX?: number;
+    offsetY?: number;
+    radius?: number;
+    spread?: number;
+    visible?: boolean;
+  };
+  add_layer_blur: {
+    nodeId: string;
+    radius: number;
+    visible?: boolean;
+  };
+  add_background_blur: {
+    nodeId: string;
+    radius: number;
+    visible?: boolean;
+  };
+
+  // Constraints (Responsive)
+  get_constraints: {
+    nodeId: string;
+  };
+  set_constraints: {
+    nodeId: string;
+    horizontal?: ConstraintType;
+    vertical?: ConstraintType;
+  };
+
+  // Grid Styles
+  get_grid_styles: Record<string, never>;
+  create_grid_style: {
+    name: string;
+    grids: LayoutGridInput[];
+  };
+  apply_grid_style: {
+    nodeId: string;
+    styleId?: string;
+    styleName?: string;
+  };
+  delete_grid_style: {
+    styleId: string;
+  };
+  set_layout_grids: {
+    nodeId: string;
+    grids: LayoutGridInput[];
   };
 
   // Layout
@@ -599,4 +794,90 @@ export interface ComponentPropertyInfo {
   preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
   variantOptions?: string[];
 }
+
+// ============================================================================
+// Paint Style Types
+// ============================================================================
+
+export interface PaintStyleInfo {
+  id: string;
+  name: string;
+  key: string;
+  type: 'SOLID' | 'GRADIENT_LINEAR' | 'GRADIENT_RADIAL' | 'GRADIENT_ANGULAR' | 'GRADIENT_DIAMOND';
+  color?: RGBA;
+  gradientStops?: Array<{ position: number; color: RGBA }>;
+}
+
+export interface GradientStop {
+  position: number;
+  color: RGBA;
+}
+
+// ============================================================================
+// Effect Style Types
+// ============================================================================
+
+export type EffectType = 'DROP_SHADOW' | 'INNER_SHADOW' | 'LAYER_BLUR' | 'BACKGROUND_BLUR';
+
+export interface EffectInput {
+  type: EffectType;
+  color?: RGBA;
+  offsetX?: number;
+  offsetY?: number;
+  radius?: number;
+  spread?: number;
+  visible?: boolean;
+}
+
+export interface EffectStyleInfo {
+  id: string;
+  name: string;
+  key: string;
+  effects: Array<{
+    type: EffectType;
+    color?: RGBA;
+    offset?: { x: number; y: number };
+    radius?: number;
+    spread?: number;
+    visible?: boolean;
+  }>;
+}
+
+// ============================================================================
+// Grid Style Types
+// ============================================================================
+
+export type LayoutGridPattern = 'COLUMNS' | 'ROWS' | 'GRID';
+export type LayoutGridAlignment = 'MIN' | 'MAX' | 'CENTER' | 'STRETCH';
+
+export interface LayoutGridInput {
+  pattern: LayoutGridPattern;
+  sectionSize?: number;
+  visible?: boolean;
+  color?: RGBA;
+  // For COLUMNS and ROWS
+  alignment?: LayoutGridAlignment;
+  gutterSize?: number;
+  count?: number;
+  offset?: number;
+}
+
+export interface GridStyleInfo {
+  id: string;
+  name: string;
+  key: string;
+  grids: Array<{
+    pattern: LayoutGridPattern;
+    sectionSize?: number;
+    visible?: boolean;
+    color?: RGBA;
+    alignment?: LayoutGridAlignment;
+    gutterSize?: number;
+    count?: number;
+    offset?: number;
+  }>;
+}
+
+// Re-export ConstraintType for convenience
+export type { ConstraintType } from './figma';
 

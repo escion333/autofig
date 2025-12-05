@@ -210,7 +210,7 @@ server.tool(
 
 function rgbaToHex(color: any): string {
   // skip if color is already hex
-  if (color.startsWith('#')) {
+  if (typeof color === 'string' && color.startsWith('#')) {
     return color;
   }
 
@@ -681,6 +681,272 @@ server.tool(
               }`,
           },
         ],
+      };
+    }
+  }
+);
+
+// Create Polygon Tool
+server.tool(
+  "create_polygon",
+  "Create a regular polygon (triangle, hexagon, etc.) in Figma",
+  {
+    x: z.number().optional().describe("X position (default: 0)"),
+    y: z.number().optional().describe("Y position (default: 0)"),
+    pointCount: z.number().min(3).max(100).optional().describe("Number of sides (default: 6, min: 3)"),
+    radius: z.number().positive().optional().describe("Radius of the polygon (default: 50)"),
+    name: z.string().optional().describe("Name for the polygon"),
+    parentId: z.string().optional().describe("Parent node ID"),
+    fillColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Fill color in RGBA"),
+    strokeColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Stroke color in RGBA"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+  },
+  async ({ x, y, pointCount, radius, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_polygon", {
+        x, y, pointCount, radius, name, parentId, fillColor, strokeColor, strokeWeight,
+      });
+      const typedResult = result as { name: string; id: string; pointCount: number };
+      return {
+        content: [{ type: "text", text: `Created ${typedResult.pointCount}-sided polygon "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error creating polygon: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// Create Star Tool
+server.tool(
+  "create_star",
+  "Create a star shape in Figma",
+  {
+    x: z.number().optional().describe("X position (default: 0)"),
+    y: z.number().optional().describe("Y position (default: 0)"),
+    pointCount: z.number().min(3).max(100).optional().describe("Number of points (default: 5)"),
+    innerRadius: z.number().positive().optional().describe("Inner radius (default: 25)"),
+    outerRadius: z.number().positive().optional().describe("Outer radius (default: 50)"),
+    name: z.string().optional().describe("Name for the star"),
+    parentId: z.string().optional().describe("Parent node ID"),
+    fillColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Fill color in RGBA"),
+    strokeColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Stroke color in RGBA"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+  },
+  async ({ x, y, pointCount, innerRadius, outerRadius, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_star", {
+        x, y, pointCount, innerRadius, outerRadius, name, parentId, fillColor, strokeColor, strokeWeight,
+      });
+      const typedResult = result as { name: string; id: string; pointCount: number };
+      return {
+        content: [{ type: "text", text: `Created ${typedResult.pointCount}-point star "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error creating star: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// Create Line Tool
+server.tool(
+  "create_line",
+  "Create a line in Figma from start point to end point",
+  {
+    startX: z.number().optional().describe("Starting X position (default: 0)"),
+    startY: z.number().optional().describe("Starting Y position (default: 0)"),
+    endX: z.number().optional().describe("Ending X position (default: 100)"),
+    endY: z.number().optional().describe("Ending Y position (default: 0)"),
+    name: z.string().optional().describe("Name for the line"),
+    parentId: z.string().optional().describe("Parent node ID"),
+    strokeColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Stroke color in RGBA (default: black)"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight (default: 1)"),
+  },
+  async ({ startX, startY, endX, endY, name, parentId, strokeColor, strokeWeight }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_line", {
+        startX, startY, endX, endY, name, parentId, strokeColor, strokeWeight,
+      });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [{ type: "text", text: `Created line "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error creating line: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// Create Vector Tool
+server.tool(
+  "create_vector",
+  "Create a vector shape from SVG path data in Figma",
+  {
+    x: z.number().optional().describe("X position (default: 0)"),
+    y: z.number().optional().describe("Y position (default: 0)"),
+    pathData: z.string().describe("SVG path data string (e.g., 'M 0 0 L 100 100 L 0 100 Z')"),
+    name: z.string().optional().describe("Name for the vector"),
+    parentId: z.string().optional().describe("Parent node ID"),
+    fillColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Fill color in RGBA"),
+    strokeColor: z.object({
+      r: z.number().min(0).max(1),
+      g: z.number().min(0).max(1),
+      b: z.number().min(0).max(1),
+      a: z.number().min(0).max(1).optional(),
+    }).optional().describe("Stroke color in RGBA"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+  },
+  async ({ x, y, pathData, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_vector", {
+        x, y, pathData, name, parentId, fillColor, strokeColor, strokeWeight,
+      });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [{ type: "text", text: `Created vector "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error creating vector: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Boolean Operations Tools
+// ============================================================================
+
+// Boolean Operation Tool
+server.tool(
+  "boolean_operation",
+  "Perform a boolean operation (union, subtract, intersect, exclude) on multiple nodes",
+  {
+    nodeIds: z.array(z.string()).min(2).describe("Array of node IDs to combine (minimum 2)"),
+    operation: z.enum(["UNION", "SUBTRACT", "INTERSECT", "EXCLUDE"]).describe("Boolean operation type"),
+    name: z.string().optional().describe("Name for the resulting shape"),
+  },
+  async ({ nodeIds, operation, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("boolean_operation", {
+        nodeIds, operation, name,
+      });
+      const typedResult = result as { name: string; id: string; booleanOperation: string };
+      return {
+        content: [{ type: "text", text: `Created ${typedResult.booleanOperation} result "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error performing boolean operation: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// Flatten Node Tool
+server.tool(
+  "flatten_node",
+  "Flatten a node to a single vector path. Useful for simplifying complex shapes.",
+  {
+    nodeId: z.string().describe("The ID of the node to flatten"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("flatten_node", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [{ type: "text", text: `Flattened node to vector "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error flattening node: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// Outline Stroke Tool
+server.tool(
+  "outline_stroke",
+  "Convert a node's stroke to a filled shape. The stroke becomes the new fill.",
+  {
+    nodeId: z.string().describe("The ID of the node to outline"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("outline_stroke", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [{ type: "text", text: `Outlined stroke to "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error outlining stroke: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Image Tools
+// ============================================================================
+
+// Set Image Fill Tool
+server.tool(
+  "set_image_fill",
+  "Set an image as the fill of a node from base64 encoded image data",
+  {
+    nodeId: z.string().describe("The ID of the node to apply the image to"),
+    imageData: z.string().describe("Base64 encoded image data (with or without data URL prefix)"),
+    scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image should scale (default: FILL)"),
+  },
+  async ({ nodeId, imageData, scaleMode }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_image_fill", {
+        nodeId, imageData, scaleMode,
+      });
+      const typedResult = result as { success: boolean; nodeName: string; scaleMode: string };
+      return {
+        content: [{ type: "text", text: `Applied image fill to "${typedResult.nodeName}" with scale mode: ${typedResult.scaleMode}` }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}` }],
       };
     }
   }
@@ -2315,6 +2581,954 @@ server.tool(
           {
             type: "text",
             text: `Error setting text properties: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Paint Style Tools
+// ============================================================================
+
+// Get Paint Styles Tool
+server.tool(
+  "get_paint_styles",
+  "Get all local paint (color) styles from the Figma document. Paint styles are reusable color definitions that can be applied to fills and strokes.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_paint_styles");
+      const typedResult = result as { count: number; styles: Array<{ id: string; name: string; type: string; color?: { r: number; g: number; b: number; a: number } }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.count > 0
+              ? `Found ${typedResult.count} paint styles:\n${
+                  typedResult.styles.map(s => {
+                    if (s.color) {
+                      const hex = `#${Math.round(s.color.r * 255).toString(16).padStart(2, '0')}${Math.round(s.color.g * 255).toString(16).padStart(2, '0')}${Math.round(s.color.b * 255).toString(16).padStart(2, '0')}`;
+                      return `- "${s.name}" (ID: ${s.id}): ${hex} (${s.type})`;
+                    }
+                    return `- "${s.name}" (ID: ${s.id}): ${s.type}`;
+                  }).join('\n')
+                }`
+              : 'No paint styles found in document. Use create_paint_style to create one.',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting paint styles: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Paint Style Tool
+server.tool(
+  "create_paint_style",
+  "Create a new reusable paint (color) style in Figma. Paint styles define colors that can be applied to multiple nodes.",
+  {
+    name: z.string().describe("Name for the paint style (e.g., 'Primary/500', 'Background/Light')"),
+    color: z.object({
+      r: z.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
+    }).describe("RGBA color values (each component 0-1)"),
+  },
+  async ({ name, color }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_paint_style", {
+        name,
+        color: {
+          r: color.r,
+          g: color.g,
+          b: color.b,
+          a: color.a ?? 1,
+        },
+      });
+      const typedResult = result as { id: string; name: string; key: string; color: { r: number; g: number; b: number; a: number } };
+      const hex = `#${Math.round(typedResult.color.r * 255).toString(16).padStart(2, '0')}${Math.round(typedResult.color.g * 255).toString(16).padStart(2, '0')}${Math.round(typedResult.color.b * 255).toString(16).padStart(2, '0')}`;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created paint style "${typedResult.name}" (ID: ${typedResult.id}) with color ${hex}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating paint style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Update Paint Style Tool
+server.tool(
+  "update_paint_style",
+  "Update an existing paint style's name or color.",
+  {
+    styleId: z.string().describe("The ID of the paint style to update"),
+    name: z.string().optional().describe("New name for the paint style"),
+    color: z.object({
+      r: z.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
+    }).optional().describe("New RGBA color values"),
+  },
+  async ({ styleId, name, color }: any) => {
+    try {
+      const result = await sendCommandToFigma("update_paint_style", {
+        styleId,
+        name,
+        color: color ? {
+          r: color.r,
+          g: color.g,
+          b: color.b,
+          a: color.a ?? 1,
+        } : undefined,
+      });
+      const typedResult = result as { id: string; name: string; color?: { r: number; g: number; b: number; a: number } };
+      let response = `Updated paint style "${typedResult.name}" (ID: ${typedResult.id})`;
+      if (typedResult.color) {
+        const hex = `#${Math.round(typedResult.color.r * 255).toString(16).padStart(2, '0')}${Math.round(typedResult.color.g * 255).toString(16).padStart(2, '0')}${Math.round(typedResult.color.b * 255).toString(16).padStart(2, '0')}`;
+        response += ` with color ${hex}`;
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: response,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error updating paint style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Apply Paint Style Tool
+server.tool(
+  "apply_paint_style",
+  "Apply a paint style to a node's fills or strokes. You can specify either the style ID or the style name.",
+  {
+    nodeId: z.string().describe("The ID of the node to style"),
+    styleId: z.string().optional().describe("The ID of the paint style to apply"),
+    styleName: z.string().optional().describe("The name of the paint style to apply (alternative to styleId)"),
+    property: z.enum(["fills", "strokes"]).optional().describe("Which property to apply the style to (default: fills)"),
+  },
+  async ({ nodeId, styleId, styleName, property }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_paint_style", {
+        nodeId,
+        styleId,
+        styleName,
+        property: property || "fills",
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; styleName: string; property: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied paint style "${typedResult.styleName}" to ${typedResult.property} of node "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error applying paint style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Paint Style Tool
+server.tool(
+  "delete_paint_style",
+  "Delete a paint style from the document.",
+  {
+    styleId: z.string().describe("The ID of the paint style to delete"),
+  },
+  async ({ styleId }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_paint_style", {
+        styleId,
+      });
+      const typedResult = result as { success: boolean; styleId: string; styleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Deleted paint style "${typedResult.styleName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting paint style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Gradient Fill Tool
+server.tool(
+  "set_gradient_fill",
+  "Set a gradient fill on a node. Supports linear, radial, angular, and diamond gradients.",
+  {
+    nodeId: z.string().describe("The ID of the node to apply the gradient to"),
+    gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).describe("Type of gradient"),
+    stops: z.array(z.object({
+      position: z.number().min(0).max(1).describe("Position of the stop (0-1)"),
+      color: z.object({
+        r: z.number().min(0).max(1).describe("Red component (0-1)"),
+        g: z.number().min(0).max(1).describe("Green component (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
+      }).describe("Color at this stop"),
+    })).min(2).describe("Array of gradient color stops (minimum 2 stops required)"),
+    angle: z.number().optional().describe("Rotation angle in degrees for linear gradients (default: 0)"),
+  },
+  async ({ nodeId, gradientType, stops, angle }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_gradient_fill", {
+        nodeId,
+        gradientType,
+        stops,
+        angle: angle ?? 0,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; gradientType: string; stopsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied ${typedResult.gradientType} gradient with ${typedResult.stopsCount} stops to node "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting gradient fill: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Effect Style Tools
+// ============================================================================
+
+// Get Effect Styles Tool
+server.tool(
+  "get_effect_styles",
+  "Get all local effect styles (shadows, blurs) from the Figma document. Effect styles are reusable visual effects that can be applied to nodes.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_effect_styles");
+      const typedResult = result as { count: number; styles: Array<{ id: string; name: string; effects: Array<{ type: string; radius?: number; offset?: { x: number; y: number } }> }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.count > 0
+              ? `Found ${typedResult.count} effect styles:\n${
+                  typedResult.styles.map(s => {
+                    const effectDesc = s.effects.map(e => {
+                      if (e.type === 'DROP_SHADOW' || e.type === 'INNER_SHADOW') {
+                        return `${e.type} (offset: ${e.offset?.x ?? 0}, ${e.offset?.y ?? 0}, blur: ${e.radius ?? 0})`;
+                      }
+                      return `${e.type} (radius: ${e.radius ?? 0})`;
+                    }).join(', ');
+                    return `- "${s.name}" (ID: ${s.id}): ${effectDesc || 'no effects'}`;
+                  }).join('\n')
+                }`
+              : 'No effect styles found in document. Use create_effect_style to create one.',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting effect styles: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Effect Style Tool
+server.tool(
+  "create_effect_style",
+  "Create a new reusable effect style in Figma. Effect styles can contain shadows, blurs, and other visual effects.",
+  {
+    name: z.string().describe("Name for the effect style (e.g., 'Shadow/Small', 'Blur/Background')"),
+    effects: z.array(z.object({
+      type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Type of effect"),
+      color: z.object({
+        r: z.number().min(0).max(1).describe("Red (0-1)"),
+        g: z.number().min(0).max(1).describe("Green (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
+      }).optional().describe("Color for shadow effects"),
+      offsetX: z.number().optional().describe("Horizontal offset for shadows"),
+      offsetY: z.number().optional().describe("Vertical offset for shadows"),
+      radius: z.number().min(0).optional().describe("Blur radius"),
+      spread: z.number().optional().describe("Spread for shadows"),
+      visible: z.boolean().optional().describe("Whether the effect is visible (default: true)"),
+    })).min(1).describe("Array of effects to include in the style"),
+  },
+  async ({ name, effects }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_effect_style", {
+        name,
+        effects,
+      });
+      const typedResult = result as { id: string; name: string; key: string; effects: Array<{ type: string }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created effect style "${typedResult.name}" (ID: ${typedResult.id}) with ${typedResult.effects.length} effect(s)`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating effect style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Apply Effect Style Tool
+server.tool(
+  "apply_effect_style",
+  "Apply an effect style to a node. You can specify either the style ID or the style name.",
+  {
+    nodeId: z.string().describe("The ID of the node to apply the effect style to"),
+    styleId: z.string().optional().describe("The ID of the effect style to apply"),
+    styleName: z.string().optional().describe("The name of the effect style to apply (alternative to styleId)"),
+  },
+  async ({ nodeId, styleId, styleName }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_effect_style", {
+        nodeId,
+        styleId,
+        styleName,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; styleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied effect style "${typedResult.styleName}" to node "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error applying effect style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Effect Style Tool
+server.tool(
+  "delete_effect_style",
+  "Delete an effect style from the document.",
+  {
+    styleId: z.string().describe("The ID of the effect style to delete"),
+  },
+  async ({ styleId }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_effect_style", {
+        styleId,
+      });
+      const typedResult = result as { success: boolean; styleId: string; styleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Deleted effect style "${typedResult.styleName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting effect style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Effects Tool
+server.tool(
+  "set_effects",
+  "Set effects on a node, replacing any existing effects. Use this for complex effect combinations.",
+  {
+    nodeId: z.string().describe("The ID of the node to apply effects to"),
+    effects: z.array(z.object({
+      type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Type of effect"),
+      color: z.object({
+        r: z.number().min(0).max(1).describe("Red (0-1)"),
+        g: z.number().min(0).max(1).describe("Green (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
+      }).optional().describe("Color for shadow effects"),
+      offsetX: z.number().optional().describe("Horizontal offset for shadows"),
+      offsetY: z.number().optional().describe("Vertical offset for shadows"),
+      radius: z.number().min(0).optional().describe("Blur radius"),
+      spread: z.number().optional().describe("Spread for shadows"),
+      visible: z.boolean().optional().describe("Whether the effect is visible (default: true)"),
+    })).describe("Array of effects to apply"),
+  },
+  async ({ nodeId, effects }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_effects", {
+        nodeId,
+        effects,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; effectsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied ${typedResult.effectsCount} effect(s) to node "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting effects: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add Drop Shadow Tool
+server.tool(
+  "add_drop_shadow",
+  "Add a drop shadow effect to a node. The shadow is added to existing effects without replacing them.",
+  {
+    nodeId: z.string().describe("The ID of the node to add the shadow to"),
+    color: z.object({
+      r: z.number().min(0).max(1).describe("Red (0-1)"),
+      g: z.number().min(0).max(1).describe("Green (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 0.25)"),
+    }).describe("Shadow color"),
+    offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
+    offsetY: z.number().optional().describe("Vertical offset in pixels (default: 4)"),
+    radius: z.number().min(0).optional().describe("Blur radius in pixels (default: 4)"),
+    spread: z.number().optional().describe("Spread in pixels (default: 0)"),
+    visible: z.boolean().optional().describe("Whether the shadow is visible (default: true)"),
+  },
+  async ({ nodeId, color, offsetX, offsetY, radius, spread, visible }: any) => {
+    try {
+      const result = await sendCommandToFigma("add_drop_shadow", {
+        nodeId,
+        color,
+        offsetX,
+        offsetY,
+        radius,
+        spread,
+        visible,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; effectsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added drop shadow to node "${typedResult.nodeName}" (now has ${typedResult.effectsCount} effect(s))`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding drop shadow: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add Inner Shadow Tool
+server.tool(
+  "add_inner_shadow",
+  "Add an inner shadow effect to a node. The shadow is added to existing effects without replacing them.",
+  {
+    nodeId: z.string().describe("The ID of the node to add the inner shadow to"),
+    color: z.object({
+      r: z.number().min(0).max(1).describe("Red (0-1)"),
+      g: z.number().min(0).max(1).describe("Green (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 0.25)"),
+    }).describe("Shadow color"),
+    offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
+    offsetY: z.number().optional().describe("Vertical offset in pixels (default: 2)"),
+    radius: z.number().min(0).optional().describe("Blur radius in pixels (default: 4)"),
+    spread: z.number().optional().describe("Spread in pixels (default: 0)"),
+    visible: z.boolean().optional().describe("Whether the shadow is visible (default: true)"),
+  },
+  async ({ nodeId, color, offsetX, offsetY, radius, spread, visible }: any) => {
+    try {
+      const result = await sendCommandToFigma("add_inner_shadow", {
+        nodeId,
+        color,
+        offsetX,
+        offsetY,
+        radius,
+        spread,
+        visible,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; effectsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added inner shadow to node "${typedResult.nodeName}" (now has ${typedResult.effectsCount} effect(s))`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding inner shadow: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add Layer Blur Tool
+server.tool(
+  "add_layer_blur",
+  "Add a layer blur effect to a node. Blurs the entire layer including its content.",
+  {
+    nodeId: z.string().describe("The ID of the node to add the blur to"),
+    radius: z.number().min(0).describe("Blur radius in pixels"),
+    visible: z.boolean().optional().describe("Whether the blur is visible (default: true)"),
+  },
+  async ({ nodeId, radius, visible }: any) => {
+    try {
+      const result = await sendCommandToFigma("add_layer_blur", {
+        nodeId,
+        radius,
+        visible,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; effectsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added layer blur (radius: ${radius}px) to node "${typedResult.nodeName}" (now has ${typedResult.effectsCount} effect(s))`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding layer blur: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add Background Blur Tool
+server.tool(
+  "add_background_blur",
+  "Add a background blur effect to a node. Blurs content behind the layer (useful for frosted glass effects).",
+  {
+    nodeId: z.string().describe("The ID of the node to add the background blur to"),
+    radius: z.number().min(0).describe("Blur radius in pixels"),
+    visible: z.boolean().optional().describe("Whether the blur is visible (default: true)"),
+  },
+  async ({ nodeId, radius, visible }: any) => {
+    try {
+      const result = await sendCommandToFigma("add_background_blur", {
+        nodeId,
+        radius,
+        visible,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; effectsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Added background blur (radius: ${radius}px) to node "${typedResult.nodeName}" (now has ${typedResult.effectsCount} effect(s))`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding background blur: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Constraints Tools (Responsive Design)
+// ============================================================================
+
+// Get Constraints Tool
+server.tool(
+  "get_constraints",
+  "Get the constraints (responsive behavior) of a node. Constraints determine how a node resizes when its parent frame changes size.",
+  {
+    nodeId: z.string().describe("The ID of the node to get constraints for"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_constraints", { nodeId });
+      const typedResult = result as { nodeId: string; nodeName: string; horizontal: string; vertical: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Constraints for "${typedResult.nodeName}":\n- Horizontal: ${typedResult.horizontal}\n- Vertical: ${typedResult.vertical}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting constraints: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Constraints Tool
+server.tool(
+  "set_constraints",
+  "Set the constraints (responsive behavior) of a node. Use MIN for left/top, MAX for right/bottom, CENTER to keep centered, STRETCH to resize with parent, SCALE to scale proportionally.",
+  {
+    nodeId: z.string().describe("The ID of the node to set constraints on"),
+    horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Horizontal constraint: MIN (left), CENTER, MAX (right), STRETCH, or SCALE"),
+    vertical: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Vertical constraint: MIN (top), CENTER, MAX (bottom), STRETCH, or SCALE"),
+  },
+  async ({ nodeId, horizontal, vertical }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_constraints", {
+        nodeId,
+        horizontal,
+        vertical,
+      });
+      const typedResult = result as { nodeId: string; nodeName: string; horizontal: string; vertical: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated constraints for "${typedResult.nodeName}":\n- Horizontal: ${typedResult.horizontal}\n- Vertical: ${typedResult.vertical}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting constraints: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Grid Style Tools
+// ============================================================================
+
+// Get Grid Styles Tool
+server.tool(
+  "get_grid_styles",
+  "Get all local grid styles from the Figma document. Grid styles define layout grids that can be applied to frames.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_grid_styles");
+      const typedResult = result as { count: number; styles: Array<{ id: string; name: string; grids: Array<{ pattern: string; count?: number; gutterSize?: number }> }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.count > 0
+              ? `Found ${typedResult.count} grid styles:\n${
+                  typedResult.styles.map(s => {
+                    const gridDesc = s.grids.map(g => {
+                      if (g.pattern === 'GRID') return 'Grid';
+                      return `${g.pattern} (${g.count ?? 'auto'} cols, ${g.gutterSize ?? 0}px gutter)`;
+                    }).join(', ');
+                    return `- "${s.name}" (ID: ${s.id}): ${gridDesc || 'no grids'}`;
+                  }).join('\n')
+                }`
+              : 'No grid styles found in document. Use create_grid_style to create one.',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting grid styles: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Grid Style Tool
+server.tool(
+  "create_grid_style",
+  "Create a new reusable grid style in Figma. Grid styles can contain columns, rows, or uniform grids.",
+  {
+    name: z.string().describe("Name for the grid style (e.g., '12-Column Grid', 'Mobile Layout')"),
+    grids: z.array(z.object({
+      pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Type of grid: COLUMNS, ROWS, or GRID (uniform)"),
+      sectionSize: z.number().optional().describe("Size of each section (for GRID pattern)"),
+      visible: z.boolean().optional().describe("Whether the grid is visible (default: true)"),
+      color: z.object({
+        r: z.number().min(0).max(1).describe("Red (0-1)"),
+        g: z.number().min(0).max(1).describe("Green (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
+      }).optional().describe("Grid color"),
+      alignment: z.enum(["MIN", "MAX", "CENTER", "STRETCH"]).optional().describe("Alignment for COLUMNS/ROWS"),
+      gutterSize: z.number().optional().describe("Gutter size in pixels (for COLUMNS/ROWS)"),
+      count: z.number().optional().describe("Number of columns/rows"),
+      offset: z.number().optional().describe("Offset in pixels"),
+    })).min(1).describe("Array of grid definitions"),
+  },
+  async ({ name, grids }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_grid_style", {
+        name,
+        grids,
+      });
+      const typedResult = result as { id: string; name: string; key: string; grids: Array<{ pattern: string }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created grid style "${typedResult.name}" (ID: ${typedResult.id}) with ${typedResult.grids.length} grid(s)`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating grid style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Apply Grid Style Tool
+server.tool(
+  "apply_grid_style",
+  "Apply a grid style to a frame. You can specify either the style ID or the style name.",
+  {
+    nodeId: z.string().describe("The ID of the frame to apply the grid style to"),
+    styleId: z.string().optional().describe("The ID of the grid style to apply"),
+    styleName: z.string().optional().describe("The name of the grid style to apply (alternative to styleId)"),
+  },
+  async ({ nodeId, styleId, styleName }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_grid_style", {
+        nodeId,
+        styleId,
+        styleName,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; styleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied grid style "${typedResult.styleName}" to frame "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error applying grid style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Grid Style Tool
+server.tool(
+  "delete_grid_style",
+  "Delete a grid style from the document.",
+  {
+    styleId: z.string().describe("The ID of the grid style to delete"),
+  },
+  async ({ styleId }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_grid_style", { styleId });
+      const typedResult = result as { success: boolean; styleId: string; styleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Deleted grid style "${typedResult.styleName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting grid style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Layout Grids Tool
+server.tool(
+  "set_layout_grids",
+  "Set layout grids directly on a frame, replacing any existing grids. Use this for custom grid configurations.",
+  {
+    nodeId: z.string().describe("The ID of the frame to set grids on"),
+    grids: z.array(z.object({
+      pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Type of grid"),
+      sectionSize: z.number().optional().describe("Size of each section"),
+      visible: z.boolean().optional().describe("Whether visible"),
+      color: z.object({
+        r: z.number().min(0).max(1),
+        g: z.number().min(0).max(1),
+        b: z.number().min(0).max(1),
+        a: z.number().min(0).max(1).optional(),
+      }).optional().describe("Grid color"),
+      alignment: z.enum(["MIN", "MAX", "CENTER", "STRETCH"]).optional(),
+      gutterSize: z.number().optional(),
+      count: z.number().optional(),
+      offset: z.number().optional(),
+    })).describe("Array of grids to apply"),
+  },
+  async ({ nodeId, grids }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_layout_grids", {
+        nodeId,
+        grids,
+      });
+      const typedResult = result as { success: boolean; nodeId: string; nodeName: string; gridsCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied ${typedResult.gridsCount} grid(s) to frame "${typedResult.nodeName}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

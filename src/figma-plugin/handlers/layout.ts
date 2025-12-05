@@ -1,8 +1,8 @@
 /**
- * Layout handlers (move, resize, delete, clone)
+ * Layout handlers (move, resize, delete, clone, constraints)
  */
 
-import type { CommandParams, NodeResult } from '../../shared/types';
+import type { CommandParams, NodeResult, ConstraintType } from '../../shared/types';
 import { getNodeById, assertNodeCapability, delay } from '../utils/helpers';
 import { sendProgressUpdate, generateCommandId } from '../utils/progress';
 
@@ -211,7 +211,7 @@ export async function cloneNode(params: CommandParams['clone_node']): Promise<No
 
   const node = await getNodeById(nodeId);
 
-  // Clone the node
+  // Clone the node - clone() automatically places it as a sibling of the original
   const clone = node.clone();
 
   // If x and y are provided, move the clone to that position
@@ -223,10 +223,9 @@ export async function cloneNode(params: CommandParams['clone_node']): Promise<No
     (clone as SceneNode & { x: number; y: number }).y = y;
   }
 
-  // Add the clone to the same parent as the original node
-  if (node.parent && 'appendChild' in node.parent) {
-    (node.parent as BaseNode & ChildrenMixin).appendChild(clone);
-  } else {
+  // Note: clone() already adds the node to the same parent as the original
+  // Only add to currentPage if somehow the clone has no parent (shouldn't happen)
+  if (!clone.parent) {
     figma.currentPage.appendChild(clone);
   }
 
@@ -237,6 +236,83 @@ export async function cloneNode(params: CommandParams['clone_node']): Promise<No
     y: 'y' in clone ? clone.y : undefined,
     width: 'width' in clone ? clone.width : undefined,
     height: 'height' in clone ? clone.height : undefined,
+  };
+}
+
+// ============================================================================
+// Constraint Operations (Responsive Design)
+// ============================================================================
+
+/**
+ * Get constraints for a node
+ */
+export async function getConstraints(
+  params: CommandParams['get_constraints']
+): Promise<{
+  nodeId: string;
+  nodeName: string;
+  horizontal: ConstraintType;
+  vertical: ConstraintType;
+}> {
+  const { nodeId } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  const node = await getNodeById(nodeId);
+  assertNodeCapability(node, 'constraints', `Node "${node.name}" does not support constraints`);
+
+  const constrainedNode = node as SceneNode & { constraints: Constraints };
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    horizontal: constrainedNode.constraints.horizontal as ConstraintType,
+    vertical: constrainedNode.constraints.vertical as ConstraintType,
+  };
+}
+
+/**
+ * Set constraints for a node
+ */
+export async function setConstraints(
+  params: CommandParams['set_constraints']
+): Promise<{
+  nodeId: string;
+  nodeName: string;
+  horizontal: ConstraintType;
+  vertical: ConstraintType;
+}> {
+  const { nodeId, horizontal, vertical } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  if (horizontal === undefined && vertical === undefined) {
+    throw new Error('At least one constraint (horizontal or vertical) must be provided');
+  }
+
+  const node = await getNodeById(nodeId);
+  assertNodeCapability(node, 'constraints', `Node "${node.name}" does not support constraints`);
+
+  const constrainedNode = node as SceneNode & { constraints: Constraints };
+
+  // Get current constraints
+  const currentConstraints = { ...constrainedNode.constraints };
+
+  // Update constraints
+  constrainedNode.constraints = {
+    horizontal: horizontal ?? currentConstraints.horizontal,
+    vertical: vertical ?? currentConstraints.vertical,
+  };
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    horizontal: constrainedNode.constraints.horizontal as ConstraintType,
+    vertical: constrainedNode.constraints.vertical as ConstraintType,
   };
 }
 

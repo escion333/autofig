@@ -21,7 +21,7 @@ export async function setCharacters(
 
   try {
     if (node.fontName === figma.mixed) {
-      if (options?.smartStrategy === 'prevail') {
+      if (options?.smartStrategy === 'prevail' && node.characters.length > 1) {
         // Find most used font
         const fontHashTree: Record<string, number> = {};
         for (let i = 1; i < node.characters.length; i++) {
@@ -29,16 +29,27 @@ export async function setCharacters(
           const key = `${charFont.family}::${charFont.style}`;
           fontHashTree[key] = fontHashTree[key] ? fontHashTree[key] + 1 : 1;
         }
-        const prevailedTreeItem = Object.entries(fontHashTree).sort((a, b) => b[1] - a[1])[0];
-        const [family, style] = prevailedTreeItem[0].split('::');
-        const prevailedFont: FontName = { family, style };
-        await figma.loadFontAsync(prevailedFont);
-        node.fontName = prevailedFont;
-      } else {
+        const entries = Object.entries(fontHashTree);
+        if (entries.length > 0) {
+          const prevailedTreeItem = entries.sort((a, b) => b[1] - a[1])[0];
+          const [family, style] = prevailedTreeItem[0].split('::');
+          const prevailedFont: FontName = { family, style };
+          await figma.loadFontAsync(prevailedFont);
+          node.fontName = prevailedFont;
+        } else {
+          // Fallback if no font entries found
+          await figma.loadFontAsync(fallbackFont);
+          node.fontName = fallbackFont;
+        }
+      } else if (node.characters.length > 0) {
         // Use first character's font
         const firstCharFont = node.getRangeFontName(0, 1) as FontName;
         await figma.loadFontAsync(firstCharFont);
         node.fontName = firstCharFont;
+      } else {
+        // Empty text node - use fallback font
+        await figma.loadFontAsync(fallbackFont);
+        node.fontName = fallbackFont;
       }
     } else {
       await figma.loadFontAsync(node.fontName as FontName);
@@ -79,14 +90,18 @@ export async function setTextContent(params: CommandParams['set_text_content']) 
   }
 
   try {
-    await figma.loadFontAsync((node as TextNode).fontName as FontName);
-    await setCharacters(node as TextNode, text);
+    const textNode = node as TextNode;
+    // Handle mixed fonts - setCharacters will handle font loading
+    if (textNode.fontName !== figma.mixed) {
+      await figma.loadFontAsync(textNode.fontName as FontName);
+    }
+    await setCharacters(textNode, text);
 
     return {
       id: node.id,
       name: node.name,
-      characters: (node as TextNode).characters,
-      fontName: (node as TextNode).fontName,
+      characters: textNode.characters,
+      fontName: textNode.fontName,
     };
   } catch (error) {
     throw new Error(`Error setting text content: ${(error as Error).message}`);
@@ -256,8 +271,12 @@ export async function setMultipleTextContents(params: CommandParams['set_multipl
           return { success: false, nodeId, error: `Node is not a text node: ${nodeId}` };
         }
 
-        await figma.loadFontAsync((node as TextNode).fontName as FontName);
-        await setCharacters(node as TextNode, text);
+        const textNode = node as TextNode;
+        // Handle mixed fonts - setCharacters will handle font loading
+        if (textNode.fontName !== figma.mixed) {
+          await figma.loadFontAsync(textNode.fontName as FontName);
+        }
+        await setCharacters(textNode, text);
 
         return { success: true, nodeId, nodeName: node.name };
       } catch (error) {
