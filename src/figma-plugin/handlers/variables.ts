@@ -7,6 +7,8 @@ import type {
   VariableCollectionInfo,
   VariableInfo,
   VariableModeInfo,
+  VariableValue,
+  VariableBindableField,
 } from '../../shared/types';
 
 /**
@@ -116,5 +118,378 @@ function isRGBA(value: unknown): value is { r: number; g: number; b: number; a: 
     'g' in value &&
     'b' in value
   );
+}
+
+// =============================================================================
+// Write Operations
+// =============================================================================
+
+/**
+ * Create a new variable collection
+ */
+export async function createVariableCollection(
+  params: CommandParams['create_variable_collection']
+): Promise<VariableCollectionInfo> {
+  const { name, modes } = params;
+
+  if (!name) {
+    throw new Error('Missing name parameter');
+  }
+
+  // Create the collection
+  const collection = figma.variables.createVariableCollection(name);
+
+  // Rename the default mode if modes are provided
+  if (modes && modes.length > 0) {
+    // Rename the default mode to the first provided mode name
+    const defaultMode = collection.modes[0];
+    collection.renameMode(defaultMode.modeId, modes[0]);
+
+    // Add additional modes (skip the first since we renamed the default)
+    for (let i = 1; i < modes.length; i++) {
+      collection.addMode(modes[i]);
+    }
+  }
+
+  return {
+    id: collection.id,
+    name: collection.name,
+    modes: collection.modes.map((mode): VariableModeInfo => ({
+      modeId: mode.modeId,
+      name: mode.name,
+    })),
+    defaultModeId: collection.defaultModeId,
+    variableIds: collection.variableIds,
+    hiddenFromPublishing: collection.hiddenFromPublishing,
+  };
+}
+
+/**
+ * Create a new variable in a collection
+ */
+export async function createVariable(
+  params: CommandParams['create_variable']
+): Promise<VariableInfo> {
+  const { collectionId, name, resolvedType, value } = params;
+
+  if (!collectionId) {
+    throw new Error('Missing collectionId parameter');
+  }
+  if (!name) {
+    throw new Error('Missing name parameter');
+  }
+  if (!resolvedType) {
+    throw new Error('Missing resolvedType parameter');
+  }
+
+  // Verify collection exists
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) {
+    throw new Error(`Collection not found: ${collectionId}`);
+  }
+
+  // Create the variable
+  const variable = figma.variables.createVariable(name, collectionId, resolvedType);
+
+  // Set initial value if provided
+  if (value !== undefined) {
+    const defaultModeId = collection.defaultModeId;
+    const figmaValue = convertToFigmaValue(value, resolvedType);
+    variable.setValueForMode(defaultModeId, figmaValue);
+  }
+
+  // Return the created variable info
+  const valuesByMode: Record<string, unknown> = {};
+  for (const [modeId, val] of Object.entries(variable.valuesByMode)) {
+    valuesByMode[modeId] = serializeVariableValue(val);
+  }
+
+  return {
+    id: variable.id,
+    name: variable.name,
+    key: variable.key,
+    variableCollectionId: variable.variableCollectionId,
+    resolvedType: variable.resolvedType,
+    valuesByMode,
+    hiddenFromPublishing: variable.hiddenFromPublishing,
+    scopes: [...variable.scopes],
+    codeSyntax: { ...variable.codeSyntax },
+  };
+}
+
+/**
+ * Set a variable's value for a specific mode
+ */
+export async function setVariableValue(
+  params: CommandParams['set_variable_value']
+): Promise<VariableInfo> {
+  const { variableId, modeId, value } = params;
+
+  if (!variableId) {
+    throw new Error('Missing variableId parameter');
+  }
+  if (!modeId) {
+    throw new Error('Missing modeId parameter');
+  }
+  if (value === undefined) {
+    throw new Error('Missing value parameter');
+  }
+
+  // Get the variable
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found: ${variableId}`);
+  }
+
+  // Convert and set the value
+  const figmaValue = convertToFigmaValue(value, variable.resolvedType);
+  variable.setValueForMode(modeId, figmaValue);
+
+  // Return updated variable info
+  const valuesByMode: Record<string, unknown> = {};
+  for (const [mode, val] of Object.entries(variable.valuesByMode)) {
+    valuesByMode[mode] = serializeVariableValue(val);
+  }
+
+  return {
+    id: variable.id,
+    name: variable.name,
+    key: variable.key,
+    variableCollectionId: variable.variableCollectionId,
+    resolvedType: variable.resolvedType,
+    valuesByMode,
+    hiddenFromPublishing: variable.hiddenFromPublishing,
+    scopes: [...variable.scopes],
+    codeSyntax: { ...variable.codeSyntax },
+  };
+}
+
+/**
+ * Delete a variable
+ */
+export async function deleteVariable(
+  params: CommandParams['delete_variable']
+): Promise<{ success: boolean; variableId: string }> {
+  const { variableId } = params;
+
+  if (!variableId) {
+    throw new Error('Missing variableId parameter');
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found: ${variableId}`);
+  }
+
+  variable.remove();
+
+  return {
+    success: true,
+    variableId,
+  };
+}
+
+/**
+ * Get variables bound to a node
+ */
+export async function getBoundVariables(
+  params: CommandParams['get_bound_variables']
+): Promise<{
+  nodeId: string;
+  boundVariables: Record<string, { variableId: string; variableName?: string }[]>;
+}> {
+  const { nodeId } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  const boundVariables: Record<string, { variableId: string; variableName?: string }[]> = {};
+
+  // Check if node has boundVariables property
+  if ('boundVariables' in node && node.boundVariables) {
+    for (const [field, bindings] of Object.entries(node.boundVariables)) {
+      if (bindings) {
+        const bindingArray = Array.isArray(bindings) ? bindings : [bindings];
+        boundVariables[field] = await Promise.all(
+          bindingArray.map(async (binding: { id: string }) => {
+            const variable = await figma.variables.getVariableByIdAsync(binding.id);
+            return {
+              variableId: binding.id,
+              variableName: variable?.name,
+            };
+          })
+        );
+      }
+    }
+  }
+
+  return {
+    nodeId,
+    boundVariables,
+  };
+}
+
+/**
+ * Bind a variable to a node field
+ */
+export async function bindVariable(
+  params: CommandParams['bind_variable']
+): Promise<{
+  success: boolean;
+  nodeId: string;
+  field: string;
+  variableId: string;
+}> {
+  const { nodeId, field, variableId } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+  if (!field) {
+    throw new Error('Missing field parameter');
+  }
+  if (!variableId) {
+    throw new Error('Missing variableId parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found: ${variableId}`);
+  }
+
+  // Check if node supports setBoundVariable
+  if (!('setBoundVariable' in node)) {
+    throw new Error(`Node type ${node.type} does not support variable binding`);
+  }
+
+  // Bind the variable
+  const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable) => void };
+  bindableNode.setBoundVariable(field as VariableBindableNodeField, variable);
+
+  return {
+    success: true,
+    nodeId,
+    field,
+    variableId,
+  };
+}
+
+/**
+ * Unbind a variable from a node field
+ */
+export async function unbindVariable(
+  params: CommandParams['unbind_variable']
+): Promise<{
+  success: boolean;
+  nodeId: string;
+  field: string;
+}> {
+  const { nodeId, field } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+  if (!field) {
+    throw new Error('Missing field parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  // Check if node supports setBoundVariable
+  if (!('setBoundVariable' in node)) {
+    throw new Error(`Node type ${node.type} does not support variable binding`);
+  }
+
+  // Unbind by setting to null
+  const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable | null) => void };
+  bindableNode.setBoundVariable(field as VariableBindableNodeField, null);
+
+  return {
+    success: true,
+    nodeId,
+    field,
+  };
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Convert a VariableValue to Figma's expected format
+ */
+function convertToFigmaValue(
+  value: VariableValue,
+  resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
+): RGB | RGBA | number | string | boolean {
+  if (resolvedType === 'COLOR') {
+    if (typeof value === 'object' && 'r' in value) {
+      return {
+        r: value.r,
+        g: value.g,
+        b: value.b,
+        a: value.a ?? 1,
+      };
+    }
+    throw new Error('COLOR variable requires an RGBA object');
+  }
+
+  if (resolvedType === 'FLOAT') {
+    if (typeof value === 'number') {
+      return value;
+    }
+    throw new Error('FLOAT variable requires a number');
+  }
+
+  if (resolvedType === 'STRING') {
+    if (typeof value === 'string') {
+      return value;
+    }
+    throw new Error('STRING variable requires a string');
+  }
+
+  if (resolvedType === 'BOOLEAN') {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    throw new Error('BOOLEAN variable requires a boolean');
+  }
+
+  return value as string | number | boolean;
+}
+
+/**
+ * Serialize a variable value for JSON response
+ */
+function serializeVariableValue(value: unknown): unknown {
+  if (isVariableAlias(value)) {
+    return {
+      type: 'VARIABLE_ALIAS',
+      id: value.id,
+    };
+  }
+  if (isRGBA(value)) {
+    return {
+      r: value.r,
+      g: value.g,
+      b: value.b,
+      a: value.a,
+    };
+  }
+  return value;
 }
 

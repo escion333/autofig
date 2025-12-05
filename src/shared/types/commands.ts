@@ -33,6 +33,13 @@ export type FigmaCommand =
   // Variables (Design Tokens)
   | 'get_local_variable_collections'
   | 'get_local_variables'
+  | 'create_variable_collection'
+  | 'create_variable'
+  | 'set_variable_value'
+  | 'delete_variable'
+  | 'get_bound_variables'
+  | 'bind_variable'
+  | 'unbind_variable'
   // Typography
   | 'get_available_fonts'
   | 'load_font'
@@ -94,6 +101,36 @@ export interface CommandParams {
   get_local_variable_collections: Record<string, never>;
   get_local_variables: {
     collectionId?: string;
+  };
+  create_variable_collection: {
+    name: string;
+    modes?: string[];
+  };
+  create_variable: {
+    collectionId: string;
+    name: string;
+    resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
+    value?: VariableValue;
+  };
+  set_variable_value: {
+    variableId: string;
+    modeId: string;
+    value: VariableValue;
+  };
+  delete_variable: {
+    variableId: string;
+  };
+  get_bound_variables: {
+    nodeId: string;
+  };
+  bind_variable: {
+    nodeId: string;
+    field: VariableBindableField;
+    variableId: string;
+  };
+  unbind_variable: {
+    nodeId: string;
+    field: VariableBindableField;
   };
 
   // Element Creation
@@ -446,6 +483,35 @@ export interface AnnotationInfo {
 // ============================================================================
 // Variable Types (Design Tokens)
 // ============================================================================
+
+export type VariableValue =
+  | { r: number; g: number; b: number; a?: number }  // COLOR
+  | number  // FLOAT
+  | string  // STRING
+  | boolean;  // BOOLEAN
+
+export type VariableBindableField =
+  | 'fills'
+  | 'strokes'
+  | 'strokeWeight'
+  | 'cornerRadius'
+  | 'topLeftRadius'
+  | 'topRightRadius'
+  | 'bottomLeftRadius'
+  | 'bottomRightRadius'
+  | 'paddingLeft'
+  | 'paddingRight'
+  | 'paddingTop'
+  | 'paddingBottom'
+  | 'itemSpacing'
+  | 'counterAxisSpacing'
+  | 'opacity'
+  | 'width'
+  | 'height'
+  | 'minWidth'
+  | 'maxWidth'
+  | 'minHeight'
+  | 'maxHeight';
 
 export interface VariableModeInfo {
   modeId: string;

@@ -1087,6 +1087,264 @@ server.tool(
   }
 );
 
+// Create Variable Collection Tool
+server.tool(
+  "create_variable_collection",
+  "Create a new variable collection for organizing design tokens. Collections group related variables (colors, spacing, etc.) and can have multiple modes (e.g., light/dark themes).",
+  {
+    name: z.string().describe("Name of the collection (e.g., 'Colors', 'Spacing', 'Typography')"),
+    modes: z.array(z.string()).optional().describe("Optional array of mode names (e.g., ['Light', 'Dark']). Defaults to a single 'Mode 1' if not provided."),
+  },
+  async ({ name, modes }: { name: string; modes?: string[] }) => {
+    try {
+      const result = await sendCommandToFigma("create_variable_collection", { name, modes });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating variable collection: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Variable Tool
+server.tool(
+  "create_variable",
+  "Create a new variable (design token) in a collection. Variables can be colors, numbers, strings, or booleans. Use get_local_variable_collections first to get the collection ID.",
+  {
+    collectionId: z.string().describe("The ID of the collection to add the variable to"),
+    name: z.string().describe("Name of the variable (e.g., 'primary/500', 'spacing/sm')"),
+    resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Type of the variable: COLOR for colors, FLOAT for numbers, STRING for text, BOOLEAN for true/false"),
+    value: z.union([
+      z.object({
+        r: z.number().min(0).max(1).describe("Red component (0-1)"),
+        g: z.number().min(0).max(1).describe("Green component (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
+      }),
+      z.number(),
+      z.string(),
+      z.boolean(),
+    ]).optional().describe("Initial value for the default mode. Type must match resolvedType."),
+  },
+  async ({ collectionId, name, resolvedType, value }: { collectionId: string; name: string; resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"; value?: unknown }) => {
+    try {
+      const result = await sendCommandToFigma("create_variable", { collectionId, name, resolvedType, value });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating variable: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Variable Value Tool
+server.tool(
+  "set_variable_value",
+  "Set or update a variable's value for a specific mode. Use this to set different values for light/dark themes or other modes.",
+  {
+    variableId: z.string().describe("The ID of the variable to update"),
+    modeId: z.string().describe("The mode ID to set the value for (get from collection's modes array)"),
+    value: z.union([
+      z.object({
+        r: z.number().min(0).max(1).describe("Red component (0-1)"),
+        g: z.number().min(0).max(1).describe("Green component (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+        a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
+      }),
+      z.number(),
+      z.string(),
+      z.boolean(),
+    ]).describe("The value to set. Type must match the variable's resolvedType."),
+  },
+  async ({ variableId, modeId, value }: { variableId: string; modeId: string; value: unknown }) => {
+    try {
+      const result = await sendCommandToFigma("set_variable_value", { variableId, modeId, value });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting variable value: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Variable Tool
+server.tool(
+  "delete_variable",
+  "Delete a variable from its collection. This will remove all bindings to this variable.",
+  {
+    variableId: z.string().describe("The ID of the variable to delete"),
+  },
+  async ({ variableId }: { variableId: string }) => {
+    try {
+      const result = await sendCommandToFigma("delete_variable", { variableId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting variable: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Bound Variables Tool
+server.tool(
+  "get_bound_variables",
+  "Get all variables bound to a node's properties. Shows which design tokens are applied to fills, strokes, corner radius, padding, etc.",
+  {
+    nodeId: z.string().describe("The ID of the node to check for bound variables"),
+  },
+  async ({ nodeId }: { nodeId: string }) => {
+    try {
+      const result = await sendCommandToFigma("get_bound_variables", { nodeId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting bound variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Bind Variable Tool
+server.tool(
+  "bind_variable",
+  "Bind a variable (design token) to a node's property. This applies the token value to the node and updates automatically when the token changes.",
+  {
+    nodeId: z.string().describe("The ID of the node to bind the variable to"),
+    field: z.enum([
+      "fills", "strokes", "strokeWeight", "cornerRadius",
+      "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
+      "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
+      "itemSpacing", "counterAxisSpacing", "opacity",
+      "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"
+    ]).describe("The field to bind the variable to"),
+    variableId: z.string().describe("The ID of the variable to bind"),
+  },
+  async ({ nodeId, field, variableId }: { nodeId: string; field: string; variableId: string }) => {
+    try {
+      const result = await sendCommandToFigma("bind_variable", { nodeId, field, variableId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error binding variable: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Unbind Variable Tool
+server.tool(
+  "unbind_variable",
+  "Remove a variable binding from a node's property. The node will retain its current value but no longer update when the token changes.",
+  {
+    nodeId: z.string().describe("The ID of the node to unbind the variable from"),
+    field: z.enum([
+      "fills", "strokes", "strokeWeight", "cornerRadius",
+      "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
+      "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
+      "itemSpacing", "counterAxisSpacing", "opacity",
+      "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"
+    ]).describe("The field to unbind the variable from"),
+  },
+  async ({ nodeId, field }: { nodeId: string; field: string }) => {
+    try {
+      const result = await sendCommandToFigma("unbind_variable", { nodeId, field });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error unbinding variable: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Get Styles Tool
 server.tool(
   "get_styles",

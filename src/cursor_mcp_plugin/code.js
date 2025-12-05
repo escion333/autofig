@@ -1095,6 +1095,259 @@
     return typeof value === "object" && value !== null && "r" in value && "g" in value && "b" in value;
   }
   __name(isRGBA, "isRGBA");
+  async function createVariableCollection(params) {
+    const { name, modes } = params;
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    const collection = figma.variables.createVariableCollection(name);
+    if (modes && modes.length > 0) {
+      const defaultMode = collection.modes[0];
+      collection.renameMode(defaultMode.modeId, modes[0]);
+      for (let i = 1; i < modes.length; i++) {
+        collection.addMode(modes[i]);
+      }
+    }
+    return {
+      id: collection.id,
+      name: collection.name,
+      modes: collection.modes.map((mode) => ({
+        modeId: mode.modeId,
+        name: mode.name
+      })),
+      defaultModeId: collection.defaultModeId,
+      variableIds: collection.variableIds,
+      hiddenFromPublishing: collection.hiddenFromPublishing
+    };
+  }
+  __name(createVariableCollection, "createVariableCollection");
+  async function createVariable(params) {
+    const { collectionId, name, resolvedType, value } = params;
+    if (!collectionId) {
+      throw new Error("Missing collectionId parameter");
+    }
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    if (!resolvedType) {
+      throw new Error("Missing resolvedType parameter");
+    }
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Collection not found: ${collectionId}`);
+    }
+    const variable = figma.variables.createVariable(name, collectionId, resolvedType);
+    if (value !== void 0) {
+      const defaultModeId = collection.defaultModeId;
+      const figmaValue = convertToFigmaValue(value, resolvedType);
+      variable.setValueForMode(defaultModeId, figmaValue);
+    }
+    const valuesByMode = {};
+    for (const [modeId, val] of Object.entries(variable.valuesByMode)) {
+      valuesByMode[modeId] = serializeVariableValue(val);
+    }
+    return {
+      id: variable.id,
+      name: variable.name,
+      key: variable.key,
+      variableCollectionId: variable.variableCollectionId,
+      resolvedType: variable.resolvedType,
+      valuesByMode,
+      hiddenFromPublishing: variable.hiddenFromPublishing,
+      scopes: [...variable.scopes],
+      codeSyntax: { ...variable.codeSyntax }
+    };
+  }
+  __name(createVariable, "createVariable");
+  async function setVariableValue(params) {
+    const { variableId, modeId, value } = params;
+    if (!variableId) {
+      throw new Error("Missing variableId parameter");
+    }
+    if (!modeId) {
+      throw new Error("Missing modeId parameter");
+    }
+    if (value === void 0) {
+      throw new Error("Missing value parameter");
+    }
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    const figmaValue = convertToFigmaValue(value, variable.resolvedType);
+    variable.setValueForMode(modeId, figmaValue);
+    const valuesByMode = {};
+    for (const [mode, val] of Object.entries(variable.valuesByMode)) {
+      valuesByMode[mode] = serializeVariableValue(val);
+    }
+    return {
+      id: variable.id,
+      name: variable.name,
+      key: variable.key,
+      variableCollectionId: variable.variableCollectionId,
+      resolvedType: variable.resolvedType,
+      valuesByMode,
+      hiddenFromPublishing: variable.hiddenFromPublishing,
+      scopes: [...variable.scopes],
+      codeSyntax: { ...variable.codeSyntax }
+    };
+  }
+  __name(setVariableValue, "setVariableValue");
+  async function deleteVariable(params) {
+    const { variableId } = params;
+    if (!variableId) {
+      throw new Error("Missing variableId parameter");
+    }
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    variable.remove();
+    return {
+      success: true,
+      variableId
+    };
+  }
+  __name(deleteVariable, "deleteVariable");
+  async function getBoundVariables(params) {
+    const { nodeId } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    const boundVariables = {};
+    if ("boundVariables" in node && node.boundVariables) {
+      for (const [field, bindings] of Object.entries(node.boundVariables)) {
+        if (bindings) {
+          const bindingArray = Array.isArray(bindings) ? bindings : [bindings];
+          boundVariables[field] = await Promise.all(
+            bindingArray.map(async (binding) => {
+              const variable = await figma.variables.getVariableByIdAsync(binding.id);
+              return {
+                variableId: binding.id,
+                variableName: variable?.name
+              };
+            })
+          );
+        }
+      }
+    }
+    return {
+      nodeId,
+      boundVariables
+    };
+  }
+  __name(getBoundVariables, "getBoundVariables");
+  async function bindVariable(params) {
+    const { nodeId, field, variableId } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!field) {
+      throw new Error("Missing field parameter");
+    }
+    if (!variableId) {
+      throw new Error("Missing variableId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    if (!("setBoundVariable" in node)) {
+      throw new Error(`Node type ${node.type} does not support variable binding`);
+    }
+    const bindableNode = node;
+    bindableNode.setBoundVariable(field, variable);
+    return {
+      success: true,
+      nodeId,
+      field,
+      variableId
+    };
+  }
+  __name(bindVariable, "bindVariable");
+  async function unbindVariable(params) {
+    const { nodeId, field } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!field) {
+      throw new Error("Missing field parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    if (!("setBoundVariable" in node)) {
+      throw new Error(`Node type ${node.type} does not support variable binding`);
+    }
+    const bindableNode = node;
+    bindableNode.setBoundVariable(field, null);
+    return {
+      success: true,
+      nodeId,
+      field
+    };
+  }
+  __name(unbindVariable, "unbindVariable");
+  function convertToFigmaValue(value, resolvedType) {
+    if (resolvedType === "COLOR") {
+      if (typeof value === "object" && "r" in value) {
+        return {
+          r: value.r,
+          g: value.g,
+          b: value.b,
+          a: value.a ?? 1
+        };
+      }
+      throw new Error("COLOR variable requires an RGBA object");
+    }
+    if (resolvedType === "FLOAT") {
+      if (typeof value === "number") {
+        return value;
+      }
+      throw new Error("FLOAT variable requires a number");
+    }
+    if (resolvedType === "STRING") {
+      if (typeof value === "string") {
+        return value;
+      }
+      throw new Error("STRING variable requires a string");
+    }
+    if (resolvedType === "BOOLEAN") {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      throw new Error("BOOLEAN variable requires a boolean");
+    }
+    return value;
+  }
+  __name(convertToFigmaValue, "convertToFigmaValue");
+  function serializeVariableValue(value) {
+    if (isVariableAlias(value)) {
+      return {
+        type: "VARIABLE_ALIAS",
+        id: value.id
+      };
+    }
+    if (isRGBA(value)) {
+      return {
+        r: value.r,
+        g: value.g,
+        b: value.b,
+        a: value.a
+      };
+    }
+    return value;
+  }
+  __name(serializeVariableValue, "serializeVariableValue");
 
   // src/figma-plugin/handlers/typography.ts
   async function getAvailableFonts(params) {
@@ -2393,6 +2646,20 @@
         return await getLocalVariableCollections();
       case "get_local_variables":
         return await getLocalVariables(params);
+      case "create_variable_collection":
+        return await createVariableCollection(params);
+      case "create_variable":
+        return await createVariable(params);
+      case "set_variable_value":
+        return await setVariableValue(params);
+      case "delete_variable":
+        return await deleteVariable(params);
+      case "get_bound_variables":
+        return await getBoundVariables(params);
+      case "bind_variable":
+        return await bindVariable(params);
+      case "unbind_variable":
+        return await unbindVariable(params);
       // Typography
       case "get_available_fonts":
         return await getAvailableFonts(params);

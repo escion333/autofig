@@ -25,7 +25,17 @@ import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './sty
 import { groupNodes, ungroupNode } from './organization';
 
 // Variables (Design Tokens)
-import { getLocalVariableCollections, getLocalVariables } from './variables';
+import {
+  getLocalVariableCollections,
+  getLocalVariables,
+  createVariableCollection,
+  createVariable,
+  setVariableValue,
+  deleteVariable,
+  getBoundVariables,
+  bindVariable,
+  unbindVariable,
+} from './variables';
 
 // Typography
 import {
@@ -122,6 +132,20 @@ export async function handleCommand<T extends FigmaCommand>(
       return await getLocalVariableCollections();
     case 'get_local_variables':
       return await getLocalVariables(params as CommandParams['get_local_variables']);
+    case 'create_variable_collection':
+      return await createVariableCollection(params as CommandParams['create_variable_collection']);
+    case 'create_variable':
+      return await createVariable(params as CommandParams['create_variable']);
+    case 'set_variable_value':
+      return await setVariableValue(params as CommandParams['set_variable_value']);
+    case 'delete_variable':
+      return await deleteVariable(params as CommandParams['delete_variable']);
+    case 'get_bound_variables':
+      return await getBoundVariables(params as CommandParams['get_bound_variables']);
+    case 'bind_variable':
+      return await bindVariable(params as CommandParams['bind_variable']);
+    case 'unbind_variable':
+      return await unbindVariable(params as CommandParams['unbind_variable']);
 
     // Typography
     case 'get_available_fonts':

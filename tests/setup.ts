@@ -106,19 +106,84 @@ export const mockVariables: MockVariable[] = [
   },
 ];
 
+// Mock created variable
+let createdVariableIdCounter = 100;
+let createdCollectionIdCounter = 100;
+
+// Create mock variable factory
+function createMockVariable(
+  name: string,
+  collectionId: string,
+  resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
+): MockVariable & { setValueForMode: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } {
+  const id = `var-created-${createdVariableIdCounter++}`;
+  const variable = {
+    id,
+    name,
+    key: `key-${id}`,
+    variableCollectionId: collectionId,
+    resolvedType,
+    valuesByMode: {} as Record<string, unknown>,
+    hiddenFromPublishing: false,
+    scopes: ['ALL_SCOPES'],
+    codeSyntax: {},
+    setValueForMode: vi.fn((modeId: string, value: unknown) => {
+      variable.valuesByMode[modeId] = value;
+    }),
+    remove: vi.fn(),
+  };
+  return variable;
+}
+
+// Create mock collection factory
+function createMockCollection(name: string, modes?: string[]): MockVariableCollection & {
+  renameMode: ReturnType<typeof vi.fn>;
+  addMode: ReturnType<typeof vi.fn>;
+} {
+  const id = `collection-created-${createdCollectionIdCounter++}`;
+  const defaultModeId = `mode-${id}-default`;
+  const collection = {
+    id,
+    name,
+    modes: [{ modeId: defaultModeId, name: modes?.[0] || 'Mode 1' }],
+    defaultModeId,
+    variableIds: [] as string[],
+    hiddenFromPublishing: false,
+    renameMode: vi.fn((modeId: string, newName: string) => {
+      const mode = collection.modes.find((m) => m.modeId === modeId);
+      if (mode) mode.name = newName;
+    }),
+    addMode: vi.fn((modeName: string) => {
+      collection.modes.push({
+        modeId: `mode-${id}-${collection.modes.length}`,
+        name: modeName,
+      });
+    }),
+  };
+  return collection;
+}
+
 // Create global figma mock
 const figmaMock = {
   variables: {
     getLocalVariableCollectionsAsync: vi.fn().mockResolvedValue(mockCollections),
     getLocalVariablesAsync: vi.fn().mockResolvedValue(mockVariables),
+    getVariableCollectionByIdAsync: vi.fn((id: string) =>
+      Promise.resolve(mockCollections.find((c) => c.id === id) || null)
+    ),
+    getVariableByIdAsync: vi.fn((id: string) =>
+      Promise.resolve(mockVariables.find((v) => v.id === id) || null)
+    ),
     getVariableCollectionById: vi.fn((id: string) =>
       mockCollections.find((c) => c.id === id) || null
     ),
     getVariableById: vi.fn((id: string) =>
       mockVariables.find((v) => v.id === id) || null
     ),
-    createVariable: vi.fn(),
-    createVariableCollection: vi.fn(),
+    createVariable: vi.fn((name: string, collectionId: string, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
+      createMockVariable(name, collectionId, resolvedType)
+    ),
+    createVariableCollection: vi.fn((name: string) => createMockCollection(name)),
   },
   currentPage: {
     selection: [],
@@ -142,7 +207,24 @@ export { figmaMock };
 // Reset mocks between tests
 export function resetFigmaMocks() {
   vi.clearAllMocks();
+  createdVariableIdCounter = 100;
+  createdCollectionIdCounter = 100;
   figmaMock.variables.getLocalVariableCollectionsAsync.mockResolvedValue(mockCollections);
   figmaMock.variables.getLocalVariablesAsync.mockResolvedValue(mockVariables);
+  figmaMock.variables.getVariableCollectionByIdAsync.mockImplementation((id: string) =>
+    Promise.resolve(mockCollections.find((c) => c.id === id) || null)
+  );
+  figmaMock.variables.getVariableByIdAsync.mockImplementation((id: string) =>
+    Promise.resolve(mockVariables.find((v) => v.id === id) || null)
+  );
+  figmaMock.variables.createVariable.mockImplementation((name: string, collectionId: string, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
+    createMockVariable(name, collectionId, resolvedType)
+  );
+  figmaMock.variables.createVariableCollection.mockImplementation((name: string) =>
+    createMockCollection(name)
+  );
 }
+
+// Export factory functions for tests
+export { createMockVariable, createMockCollection };
 
