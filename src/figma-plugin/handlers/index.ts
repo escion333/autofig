@@ -16,10 +16,20 @@ import {
 } from './document';
 
 // Element Creation
-import { createRectangle, createFrame, createText, createEllipse, createPolygon, createStar, createLine, createVector } from './creation';
-
-// Vector Operations (Boolean, Flatten, Images)
-import { booleanOperation, flattenNode, outlineStroke, setImageFill } from './vectors';
+import {
+  createRectangle,
+  createFrame,
+  createText,
+  createEllipse,
+  createPolygon,
+  createStar,
+  createLine,
+  createVector,
+  booleanOperation,
+  flattenNode,
+  outlineStroke,
+  setImageFill,
+} from './creation';
 
 // Styling
 import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './styling';

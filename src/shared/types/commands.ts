@@ -22,6 +22,16 @@ export type FigmaCommand =
   | 'create_frame'
   | 'create_text'
   | 'create_ellipse'
+  | 'create_polygon'
+  | 'create_star'
+  | 'create_line'
+  | 'create_vector'
+  // Boolean Operations
+  | 'boolean_operation'
+  | 'flatten_node'
+  | 'outline_stroke'
+  // Images
+  | 'set_image_fill'
   // Styling
   | 'set_fill_color'
   | 'set_stroke_color'

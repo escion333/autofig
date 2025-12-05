@@ -366,22 +366,31 @@
     const fallbackFont = options?.fallbackFont || { family: "Inter", style: "Regular" };
     try {
       if (node.fontName === figma.mixed) {
-        if (options?.smartStrategy === "prevail") {
+        if (options?.smartStrategy === "prevail" && node.characters.length > 1) {
           const fontHashTree = {};
           for (let i = 1; i < node.characters.length; i++) {
             const charFont = node.getRangeFontName(i - 1, i);
             const key = `${charFont.family}::${charFont.style}`;
             fontHashTree[key] = fontHashTree[key] ? fontHashTree[key] + 1 : 1;
           }
-          const prevailedTreeItem = Object.entries(fontHashTree).sort((a, b) => b[1] - a[1])[0];
-          const [family, style] = prevailedTreeItem[0].split("::");
-          const prevailedFont = { family, style };
-          await figma.loadFontAsync(prevailedFont);
-          node.fontName = prevailedFont;
-        } else {
+          const entries = Object.entries(fontHashTree);
+          if (entries.length > 0) {
+            const prevailedTreeItem = entries.sort((a, b) => b[1] - a[1])[0];
+            const [family, style] = prevailedTreeItem[0].split("::");
+            const prevailedFont = { family, style };
+            await figma.loadFontAsync(prevailedFont);
+            node.fontName = prevailedFont;
+          } else {
+            await figma.loadFontAsync(fallbackFont);
+            node.fontName = fallbackFont;
+          }
+        } else if (node.characters.length > 0) {
           const firstCharFont = node.getRangeFontName(0, 1);
           await figma.loadFontAsync(firstCharFont);
           node.fontName = firstCharFont;
+        } else {
+          await figma.loadFontAsync(fallbackFont);
+          node.fontName = fallbackFont;
         }
       } else {
         await figma.loadFontAsync(node.fontName);
@@ -836,379 +845,6 @@
     };
   }
   __name(createText, "createText");
-  async function createPolygon(params) {
-    const {
-      x = 0,
-      y = 0,
-      pointCount = 6,
-      radius = 50,
-      name = "Polygon",
-      parentId,
-      fillColor,
-      strokeColor,
-      strokeWeight
-    } = params || {};
-    const polygon = figma.createPolygon();
-    polygon.x = x;
-    polygon.y = y;
-    polygon.resize(radius * 2, radius * 2);
-    polygon.pointCount = Math.max(3, Math.min(100, pointCount));
-    polygon.name = name;
-    if (fillColor) {
-      polygon.fills = [{
-        type: "SOLID",
-        color: {
-          r: fillColor.r ?? 0,
-          g: fillColor.g ?? 0,
-          b: fillColor.b ?? 0
-        },
-        opacity: fillColor.a ?? 1
-      }];
-    }
-    if (strokeColor) {
-      polygon.strokes = [{
-        type: "SOLID",
-        color: {
-          r: strokeColor.r ?? 0,
-          g: strokeColor.g ?? 0,
-          b: strokeColor.b ?? 0
-        },
-        opacity: strokeColor.a ?? 1
-      }];
-    }
-    if (strokeWeight !== void 0) {
-      polygon.strokeWeight = strokeWeight;
-    }
-    const parent = await getContainerNode(parentId);
-    parent.appendChild(polygon);
-    return {
-      id: polygon.id,
-      name: polygon.name,
-      x: polygon.x,
-      y: polygon.y,
-      width: polygon.width,
-      height: polygon.height,
-      pointCount: polygon.pointCount,
-      parentId: polygon.parent?.id
-    };
-  }
-  __name(createPolygon, "createPolygon");
-  async function createStar(params) {
-    const {
-      x = 0,
-      y = 0,
-      pointCount = 5,
-      innerRadius = 25,
-      outerRadius = 50,
-      name = "Star",
-      parentId,
-      fillColor,
-      strokeColor,
-      strokeWeight
-    } = params || {};
-    const star = figma.createStar();
-    star.x = x;
-    star.y = y;
-    star.resize(outerRadius * 2, outerRadius * 2);
-    star.pointCount = Math.max(3, Math.min(100, pointCount));
-    star.innerRadius = innerRadius / outerRadius;
-    star.name = name;
-    if (fillColor) {
-      star.fills = [{
-        type: "SOLID",
-        color: {
-          r: fillColor.r ?? 0,
-          g: fillColor.g ?? 0,
-          b: fillColor.b ?? 0
-        },
-        opacity: fillColor.a ?? 1
-      }];
-    }
-    if (strokeColor) {
-      star.strokes = [{
-        type: "SOLID",
-        color: {
-          r: strokeColor.r ?? 0,
-          g: strokeColor.g ?? 0,
-          b: strokeColor.b ?? 0
-        },
-        opacity: strokeColor.a ?? 1
-      }];
-    }
-    if (strokeWeight !== void 0) {
-      star.strokeWeight = strokeWeight;
-    }
-    const parent = await getContainerNode(parentId);
-    parent.appendChild(star);
-    return {
-      id: star.id,
-      name: star.name,
-      x: star.x,
-      y: star.y,
-      width: star.width,
-      height: star.height,
-      pointCount: star.pointCount,
-      innerRadius: star.innerRadius,
-      parentId: star.parent?.id
-    };
-  }
-  __name(createStar, "createStar");
-  async function createLine(params) {
-    const {
-      startX = 0,
-      startY = 0,
-      endX = 100,
-      endY = 0,
-      name = "Line",
-      parentId,
-      strokeColor,
-      strokeWeight = 1
-    } = params || {};
-    const line = figma.createLine();
-    line.x = startX;
-    line.y = startY;
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    line.resize(length, 0);
-    line.rotation = angle;
-    line.name = name;
-    line.strokes = [{
-      type: "SOLID",
-      color: strokeColor ? {
-        r: strokeColor.r ?? 0,
-        g: strokeColor.g ?? 0,
-        b: strokeColor.b ?? 0
-      } : { r: 0, g: 0, b: 0 },
-      opacity: strokeColor?.a ?? 1
-    }];
-    line.strokeWeight = strokeWeight;
-    const parent = await getContainerNode(parentId);
-    parent.appendChild(line);
-    return {
-      id: line.id,
-      name: line.name,
-      x: line.x,
-      y: line.y,
-      width: line.width,
-      rotation: line.rotation,
-      strokeWeight: line.strokeWeight,
-      parentId: line.parent?.id
-    };
-  }
-  __name(createLine, "createLine");
-  async function createVector(params) {
-    const {
-      x = 0,
-      y = 0,
-      pathData,
-      name = "Vector",
-      parentId,
-      fillColor,
-      strokeColor,
-      strokeWeight
-    } = params || {};
-    if (!pathData) {
-      throw new Error("Missing pathData parameter");
-    }
-    const vector = figma.createVector();
-    vector.x = x;
-    vector.y = y;
-    vector.name = name;
-    try {
-      vector.vectorPaths = [{
-        windingRule: "NONZERO",
-        data: pathData
-      }];
-    } catch (error) {
-      throw new Error(`Invalid path data: ${error.message}`);
-    }
-    if (fillColor) {
-      vector.fills = [{
-        type: "SOLID",
-        color: {
-          r: fillColor.r ?? 0,
-          g: fillColor.g ?? 0,
-          b: fillColor.b ?? 0
-        },
-        opacity: fillColor.a ?? 1
-      }];
-    } else {
-      vector.fills = [];
-    }
-    if (strokeColor) {
-      vector.strokes = [{
-        type: "SOLID",
-        color: {
-          r: strokeColor.r ?? 0,
-          g: strokeColor.g ?? 0,
-          b: strokeColor.b ?? 0
-        },
-        opacity: strokeColor.a ?? 1
-      }];
-    }
-    if (strokeWeight !== void 0) {
-      vector.strokeWeight = strokeWeight;
-    }
-    const parent = await getContainerNode(parentId);
-    parent.appendChild(vector);
-    return {
-      id: vector.id,
-      name: vector.name,
-      x: vector.x,
-      y: vector.y,
-      width: vector.width,
-      height: vector.height,
-      parentId: vector.parent?.id
-    };
-  }
-  __name(createVector, "createVector");
-
-  // src/figma-plugin/handlers/vectors.ts
-  async function booleanOperation(params) {
-    const { nodeIds, operation, name } = params;
-    if (!nodeIds || nodeIds.length < 2) {
-      throw new Error("At least 2 nodes are required for boolean operations");
-    }
-    if (!operation) {
-      throw new Error("Missing operation parameter");
-    }
-    const nodes = [];
-    for (const nodeId of nodeIds) {
-      const node = await getNodeById(nodeId);
-      if (!("type" in node)) {
-        throw new Error(`Node ${nodeId} is not a valid scene node`);
-      }
-      nodes.push(node);
-    }
-    const parent = nodes[0].parent;
-    for (const node of nodes) {
-      if (node.parent !== parent) {
-        throw new Error("All nodes must have the same parent for boolean operations");
-      }
-    }
-    let booleanResult;
-    switch (operation) {
-      case "UNION":
-        booleanResult = figma.union(nodes, parent);
-        break;
-      case "SUBTRACT":
-        booleanResult = figma.subtract(nodes, parent);
-        break;
-      case "INTERSECT":
-        booleanResult = figma.intersect(nodes, parent);
-        break;
-      case "EXCLUDE":
-        booleanResult = figma.exclude(nodes, parent);
-        break;
-      default:
-        throw new Error(`Unknown boolean operation: ${operation}`);
-    }
-    if (name) {
-      booleanResult.name = name;
-    } else {
-      booleanResult.name = `${operation} Result`;
-    }
-    return {
-      id: booleanResult.id,
-      name: booleanResult.name,
-      type: booleanResult.type,
-      x: booleanResult.x,
-      y: booleanResult.y,
-      width: booleanResult.width,
-      height: booleanResult.height,
-      booleanOperation: booleanResult.booleanOperation,
-      parentId: booleanResult.parent?.id
-    };
-  }
-  __name(booleanOperation, "booleanOperation");
-  async function flattenNode(params) {
-    const { nodeId } = params;
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    const node = await getNodeById(nodeId);
-    if (!("type" in node)) {
-      throw new Error(`Node ${nodeId} cannot be flattened`);
-    }
-    const sceneNode = node;
-    const flattenedNodes = figma.flatten([sceneNode]);
-    return {
-      id: flattenedNodes.id,
-      name: flattenedNodes.name,
-      type: flattenedNodes.type,
-      x: flattenedNodes.x,
-      y: flattenedNodes.y,
-      width: flattenedNodes.width,
-      height: flattenedNodes.height,
-      parentId: flattenedNodes.parent?.id
-    };
-  }
-  __name(flattenNode, "flattenNode");
-  async function outlineStroke(params) {
-    const { nodeId } = params;
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    const node = await getNodeById(nodeId);
-    assertNodeCapability(node, "outlineStroke", `Node "${node.name}" does not support outline stroke`);
-    const outlinedNode = node.outlineStroke();
-    if (!outlinedNode) {
-      throw new Error("Failed to outline stroke - node may not have a stroke");
-    }
-    return {
-      id: outlinedNode.id,
-      name: outlinedNode.name,
-      type: outlinedNode.type,
-      x: outlinedNode.x,
-      y: outlinedNode.y,
-      width: outlinedNode.width,
-      height: outlinedNode.height,
-      parentId: outlinedNode.parent?.id
-    };
-  }
-  __name(outlineStroke, "outlineStroke");
-  async function setImageFill(params) {
-    const { nodeId, imageData, scaleMode = "FILL" } = params;
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    if (!imageData) {
-      throw new Error("Missing imageData parameter");
-    }
-    const node = await getNodeById(nodeId);
-    assertNodeCapability(node, "fills", `Node "${node.name}" does not support fills`);
-    let imageBytes;
-    try {
-      let base64Data = imageData;
-      if (imageData.includes(",")) {
-        base64Data = imageData.split(",")[1];
-      }
-      const binaryString = atob(base64Data);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      imageBytes = bytes;
-    } catch (error) {
-      throw new Error(`Invalid base64 image data: ${error.message}`);
-    }
-    const imageHash = figma.createImage(imageBytes).hash;
-    const imagePaint = {
-      type: "IMAGE",
-      scaleMode,
-      imageHash
-    };
-    node.fills = [imagePaint];
-    return {
-      success: true,
-      nodeId: node.id,
-      nodeName: node.name,
-      scaleMode
-    };
-  }
-  __name(setImageFill, "setImageFill");
 
   // src/figma-plugin/handlers/styling.ts
   async function setFillColor(params) {
@@ -2654,9 +2290,7 @@
       clone.x = x;
       clone.y = y;
     }
-    if (node.parent && "appendChild" in node.parent) {
-      node.parent.appendChild(clone);
-    } else {
+    if (!clone.parent) {
       figma.currentPage.appendChild(clone);
     }
     return {
@@ -3911,24 +3545,6 @@
         return await createText(params);
       case "create_ellipse":
         return await createEllipse(params);
-      case "create_polygon":
-        return await createPolygon(params);
-      case "create_star":
-        return await createStar(params);
-      case "create_line":
-        return await createLine(params);
-      case "create_vector":
-        return await createVector(params);
-      // Boolean Operations
-      case "boolean_operation":
-        return await booleanOperation(params);
-      case "flatten_node":
-        return await flattenNode(params);
-      case "outline_stroke":
-        return await outlineStroke(params);
-      // Images
-      case "set_image_fill":
-        return await setImageFill(params);
       // Styling
       case "set_fill_color":
         return await setFillColor(params);

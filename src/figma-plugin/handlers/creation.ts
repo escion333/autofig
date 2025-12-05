@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, NodeResult } from '../../shared/types';
-import { getContainerNode, getFontStyleFromWeight } from '../utils/helpers';
+import { getContainerNode, getFontStyleFromWeight, getNodeById, assertNodeCapability } from '../utils/helpers';
 import { setCharacters } from './text';
 
 /**
@@ -575,5 +575,229 @@ export async function createVector(params: CommandParams['create_vector']): Prom
     width: vector.width,
     height: vector.height,
     parentId: vector.parent?.id,
+  };
+}
+
+// ============================================================================
+// Boolean Operations
+// ============================================================================
+
+/**
+ * Perform a boolean operation on multiple nodes
+ */
+export async function booleanOperation(params: CommandParams['boolean_operation']): Promise<NodeResult> {
+  const { nodeIds, operation, name } = params || {};
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length < 2) {
+    throw new Error('At least 2 node IDs are required for boolean operations');
+  }
+
+  if (!operation) {
+    throw new Error('Missing operation parameter');
+  }
+
+  // Get all nodes
+  const nodes: SceneNode[] = [];
+  for (const nodeId of nodeIds) {
+    const node = await getNodeById(nodeId);
+    if (!('parent' in node)) {
+      throw new Error(`Node ${nodeId} does not support boolean operations`);
+    }
+    nodes.push(node as SceneNode);
+  }
+
+  // Verify all nodes have the same parent
+  const firstParent = nodes[0].parent;
+  if (!firstParent) {
+    throw new Error('Cannot perform boolean operation on nodes without a parent. Nodes must be inside a frame or group.');
+  }
+
+  for (const node of nodes) {
+    if (node.parent !== firstParent) {
+      throw new Error('All nodes must have the same parent for boolean operations');
+    }
+  }
+
+  // Verify parent supports children (for adding the result)
+  if (!('appendChild' in firstParent)) {
+    throw new Error('Parent does not support adding children');
+  }
+
+  // Perform the boolean operation
+  let resultNode: BooleanOperationNode;
+  
+  switch (operation) {
+    case 'UNION':
+      resultNode = figma.union(nodes, firstParent as FrameNode | GroupNode | PageNode);
+      break;
+    case 'SUBTRACT':
+      resultNode = figma.subtract(nodes, firstParent as FrameNode | GroupNode | PageNode);
+      break;
+    case 'INTERSECT':
+      resultNode = figma.intersect(nodes, firstParent as FrameNode | GroupNode | PageNode);
+      break;
+    case 'EXCLUDE':
+      resultNode = figma.exclude(nodes, firstParent as FrameNode | GroupNode | PageNode);
+      break;
+    default:
+      throw new Error(`Invalid boolean operation: ${operation}`);
+  }
+
+  // Set name if provided
+  if (name) {
+    resultNode.name = name;
+  }
+
+  return {
+    id: resultNode.id,
+    name: resultNode.name,
+    x: resultNode.x,
+    y: resultNode.y,
+    width: resultNode.width,
+    height: resultNode.height,
+    booleanOperation: resultNode.booleanOperation,
+    parentId: resultNode.parent?.id,
+  };
+}
+
+/**
+ * Flatten a node to a single vector path
+ */
+export async function flattenNode(params: CommandParams['flatten_node']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  const node = await getNodeById(nodeId);
+
+  // Check if node can be flattened
+  if (!('flatten' in figma)) {
+    throw new Error('Flatten operation is not available');
+  }
+
+  // Get the parent before flattening
+  const parent = node.parent;
+  if (!parent) {
+    throw new Error('Cannot flatten a node without a parent');
+  }
+
+  // Flatten the node
+  const flattenedNode = figma.flatten([node as SceneNode], parent as FrameNode | GroupNode | PageNode);
+
+  return {
+    id: flattenedNode.id,
+    name: flattenedNode.name,
+    x: flattenedNode.x,
+    y: flattenedNode.y,
+    width: flattenedNode.width,
+    height: flattenedNode.height,
+    parentId: flattenedNode.parent?.id,
+  };
+}
+
+/**
+ * Convert a node's stroke to a filled shape
+ */
+export async function outlineStroke(params: CommandParams['outline_stroke']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  const node = await getNodeById(nodeId);
+  assertNodeCapability(node, 'outlineStroke', `Node "${node.name}" does not support outline stroke`);
+
+  const outlinedNodes = (node as GeometryMixin).outlineStroke();
+
+  if (!outlinedNodes || outlinedNodes.length === 0) {
+    throw new Error('Outline stroke produced no results. Make sure the node has a stroke.');
+  }
+
+  // If multiple nodes were produced, group them
+  if (outlinedNodes.length > 1) {
+    const parent = node.parent;
+    if (!parent || !('appendChild' in parent)) {
+      throw new Error('Cannot create group for outlined strokes - no valid parent');
+    }
+    const group = figma.group(outlinedNodes, parent as FrameNode | GroupNode | PageNode);
+    group.name = `${node.name} (outlined)`;
+    return {
+      id: group.id,
+      name: group.name,
+      x: group.x,
+      y: group.y,
+      width: group.width,
+      height: group.height,
+      parentId: group.parent?.id,
+    };
+  }
+
+  const outlinedNode = outlinedNodes[0];
+  outlinedNode.name = `${node.name} (outlined)`;
+
+  return {
+    id: outlinedNode.id,
+    name: outlinedNode.name,
+    x: outlinedNode.x,
+    y: outlinedNode.y,
+    width: outlinedNode.width,
+    height: outlinedNode.height,
+    parentId: outlinedNode.parent?.id,
+  };
+}
+
+/**
+ * Set an image as the fill of a node
+ */
+export async function setImageFill(params: CommandParams['set_image_fill']): Promise<{
+  success: boolean;
+  nodeId: string;
+  nodeName: string;
+  scaleMode: string;
+}> {
+  const { nodeId, imageData, scaleMode = 'FILL' } = params || {};
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  if (!imageData) {
+    throw new Error('Missing imageData parameter');
+  }
+
+  const node = await getNodeById(nodeId);
+  assertNodeCapability(node, 'fills', `Node "${node.name}" does not support fills`);
+
+  // Remove data URL prefix if present
+  let cleanImageData = imageData;
+  if (imageData.includes(',')) {
+    cleanImageData = imageData.split(',')[1];
+  }
+
+  // Decode base64 to Uint8Array
+  const binaryString = atob(cleanImageData);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Create the image
+  const image = figma.createImage(bytes);
+
+  // Apply the image fill
+  (node as GeometryMixin).fills = [{
+    type: 'IMAGE',
+    scaleMode: scaleMode as 'FILL' | 'FIT' | 'CROP' | 'TILE',
+    imageHash: image.hash,
+  }];
+
+  return {
+    success: true,
+    nodeId: node.id,
+    nodeName: node.name,
+    scaleMode,
   };
 }

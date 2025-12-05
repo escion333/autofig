@@ -320,4 +320,3 @@ export async function setMultipleTextContents(params: CommandParams['set_multipl
     commandId,
   };
 }
-
