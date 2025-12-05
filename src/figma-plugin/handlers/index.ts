@@ -57,7 +57,12 @@ import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacin
 import {
   getStyles,
   getLocalComponents,
+  createComponent,
+  createComponentSet,
   createComponentInstance,
+  getComponentProperties,
+  addComponentProperty,
+  setComponentPropertyValue,
   getInstanceOverrides,
   setInstanceOverrides,
 } from './components';
@@ -190,8 +195,18 @@ export async function handleCommand<T extends FigmaCommand>(
       return await getStyles();
     case 'get_local_components':
       return await getLocalComponents();
+    case 'create_component':
+      return await createComponent(params as CommandParams['create_component']);
+    case 'create_component_set':
+      return await createComponentSet(params as CommandParams['create_component_set']);
     case 'create_component_instance':
       return await createComponentInstance(params as CommandParams['create_component_instance']);
+    case 'get_component_properties':
+      return await getComponentProperties(params as CommandParams['get_component_properties']);
+    case 'add_component_property':
+      return await addComponentProperty(params as CommandParams['add_component_property']);
+    case 'set_component_property_value':
+      return await setComponentPropertyValue(params as CommandParams['set_component_property_value']);
     case 'get_instance_overrides':
       return await getInstanceOverrides(params as CommandParams['get_instance_overrides']);
     case 'set_instance_overrides':

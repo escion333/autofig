@@ -1972,6 +1972,179 @@
     };
   }
   __name(getLocalComponents, "getLocalComponents");
+  async function createComponent(params) {
+    const { nodeId, name } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    if (!("type" in node) || !["FRAME", "GROUP", "RECTANGLE", "ELLIPSE", "POLYGON", "STAR", "LINE", "VECTOR", "TEXT"].includes(node.type)) {
+      throw new Error(`Cannot convert node type ${node.type} to component. Use FRAME, GROUP, or shape nodes.`);
+    }
+    const component = figma.createComponentFromNode(node);
+    if (name) {
+      component.name = name;
+    }
+    return {
+      id: component.id,
+      name: component.name,
+      key: component.key,
+      type: "COMPONENT",
+      description: component.description,
+      documentationLinks: component.documentationLinks?.map((link) => link.uri) || [],
+      remote: component.remote
+    };
+  }
+  __name(createComponent, "createComponent");
+  async function createComponentSet(params) {
+    const { componentIds, name } = params;
+    if (!componentIds || componentIds.length === 0) {
+      throw new Error("Missing componentIds parameter");
+    }
+    if (componentIds.length < 2) {
+      throw new Error("At least 2 components are required to create a component set");
+    }
+    const components = [];
+    for (const id of componentIds) {
+      const node = await figma.getNodeByIdAsync(id);
+      if (!node) {
+        throw new Error(`Component not found: ${id}`);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`Node ${id} is not a component (type: ${node.type})`);
+      }
+      components.push(node);
+    }
+    const componentSet = figma.combineAsVariants(components, figma.currentPage);
+    if (name) {
+      componentSet.name = name;
+    }
+    const variantGroupProperties = {};
+    if (componentSet.variantGroupProperties) {
+      for (const [propName, propData] of Object.entries(componentSet.variantGroupProperties)) {
+        variantGroupProperties[propName] = {
+          values: propData.values
+        };
+      }
+    }
+    return {
+      id: componentSet.id,
+      name: componentSet.name,
+      key: componentSet.key,
+      type: "COMPONENT_SET",
+      description: componentSet.description,
+      componentIds: componentSet.children.map((child) => child.id),
+      variantGroupProperties
+    };
+  }
+  __name(createComponentSet, "createComponentSet");
+  async function getComponentProperties(params) {
+    const { componentId } = params;
+    if (!componentId) {
+      throw new Error("Missing componentId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(componentId);
+    if (!node) {
+      throw new Error(`Node not found: ${componentId}`);
+    }
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+      throw new Error(`Node is not a component or component set (type: ${node.type})`);
+    }
+    const componentNode = node;
+    const properties = [];
+    if (componentNode.componentPropertyDefinitions) {
+      for (const [propName, propDef] of Object.entries(componentNode.componentPropertyDefinitions)) {
+        properties.push({
+          name: propName,
+          type: propDef.type,
+          defaultValue: propDef.defaultValue,
+          preferredValues: propDef.preferredValues?.map((pv) => ({
+            type: pv.type,
+            key: pv.key
+          })),
+          variantOptions: propDef.variantOptions
+        });
+      }
+    }
+    return {
+      componentId: componentNode.id,
+      componentName: componentNode.name,
+      componentType: componentNode.type,
+      properties
+    };
+  }
+  __name(getComponentProperties, "getComponentProperties");
+  async function addComponentProperty(params) {
+    const { componentId, propertyName, propertyType, defaultValue, preferredValues, variantOptions } = params;
+    if (!componentId) {
+      throw new Error("Missing componentId parameter");
+    }
+    if (!propertyName) {
+      throw new Error("Missing propertyName parameter");
+    }
+    if (!propertyType) {
+      throw new Error("Missing propertyType parameter");
+    }
+    const node = await figma.getNodeByIdAsync(componentId);
+    if (!node) {
+      throw new Error(`Node not found: ${componentId}`);
+    }
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+      throw new Error(`Node is not a component or component set (type: ${node.type})`);
+    }
+    const componentNode = node;
+    const propertyDef = {
+      type: propertyType,
+      defaultValue
+    };
+    if (preferredValues) {
+      propertyDef.preferredValues = preferredValues;
+    }
+    if (variantOptions) {
+      propertyDef.variantOptions = variantOptions;
+    }
+    componentNode.addComponentProperty(propertyName, propertyDef.type, propertyDef.defaultValue);
+    return {
+      success: true,
+      componentId: componentNode.id,
+      propertyName,
+      propertyType
+    };
+  }
+  __name(addComponentProperty, "addComponentProperty");
+  async function setComponentPropertyValue(params) {
+    const { instanceId, propertyName, value } = params;
+    if (!instanceId) {
+      throw new Error("Missing instanceId parameter");
+    }
+    if (!propertyName) {
+      throw new Error("Missing propertyName parameter");
+    }
+    if (value === void 0) {
+      throw new Error("Missing value parameter");
+    }
+    const node = await figma.getNodeByIdAsync(instanceId);
+    if (!node) {
+      throw new Error(`Node not found: ${instanceId}`);
+    }
+    if (node.type !== "INSTANCE") {
+      throw new Error(`Node is not an instance (type: ${node.type})`);
+    }
+    const instance = node;
+    instance.setProperties({
+      [propertyName]: value
+    });
+    return {
+      success: true,
+      instanceId: instance.id,
+      propertyName,
+      value
+    };
+  }
+  __name(setComponentPropertyValue, "setComponentPropertyValue");
   async function createComponentInstance(params) {
     const { componentKey, x = 0, y = 0, parentId } = params || {};
     if (!componentKey) {
@@ -2700,8 +2873,18 @@
         return await getStyles();
       case "get_local_components":
         return await getLocalComponents();
+      case "create_component":
+        return await createComponent(params);
+      case "create_component_set":
+        return await createComponentSet(params);
       case "create_component_instance":
         return await createComponentInstance(params);
+      case "get_component_properties":
+        return await getComponentProperties(params);
+      case "add_component_property":
+        return await addComponentProperty(params);
+      case "set_component_property_value":
+        return await setComponentPropertyValue(params);
       case "get_instance_overrides":
         return await getInstanceOverrides(params);
       case "set_instance_overrides":

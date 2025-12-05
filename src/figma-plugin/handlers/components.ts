@@ -2,7 +2,12 @@
  * Component and style handlers
  */
 
-import type { CommandParams } from '../../shared/types';
+import type {
+  CommandParams,
+  ComponentInfo,
+  ComponentSetInfo,
+  ComponentPropertyInfo,
+} from '../../shared/types';
 
 /**
  * Get all local styles (paint, text, effect, grid)
@@ -59,6 +64,268 @@ export async function getLocalComponents() {
       name: component.name,
       key: 'key' in component ? (component as ComponentNode).key : null,
     })),
+  };
+}
+
+// =============================================================================
+// Component Creation
+// =============================================================================
+
+/**
+ * Convert a node to a component
+ */
+export async function createComponent(
+  params: CommandParams['create_component']
+): Promise<ComponentInfo> {
+  const { nodeId, name } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  // Only frame-like nodes can be converted to components
+  if (!('type' in node) || !['FRAME', 'GROUP', 'RECTANGLE', 'ELLIPSE', 'POLYGON', 'STAR', 'LINE', 'VECTOR', 'TEXT'].includes(node.type)) {
+    throw new Error(`Cannot convert node type ${node.type} to component. Use FRAME, GROUP, or shape nodes.`);
+  }
+
+  // Create the component from the node
+  const component = figma.createComponentFromNode(node as SceneNode);
+
+  // Rename if name provided
+  if (name) {
+    component.name = name;
+  }
+
+  return {
+    id: component.id,
+    name: component.name,
+    key: component.key,
+    type: 'COMPONENT',
+    description: component.description,
+    documentationLinks: component.documentationLinks?.map(link => link.uri) || [],
+    remote: component.remote,
+  };
+}
+
+/**
+ * Create a component set (variant group) from multiple components
+ */
+export async function createComponentSet(
+  params: CommandParams['create_component_set']
+): Promise<ComponentSetInfo> {
+  const { componentIds, name } = params;
+
+  if (!componentIds || componentIds.length === 0) {
+    throw new Error('Missing componentIds parameter');
+  }
+
+  if (componentIds.length < 2) {
+    throw new Error('At least 2 components are required to create a component set');
+  }
+
+  // Get all component nodes
+  const components: ComponentNode[] = [];
+  for (const id of componentIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      throw new Error(`Component not found: ${id}`);
+    }
+    if (node.type !== 'COMPONENT') {
+      throw new Error(`Node ${id} is not a component (type: ${node.type})`);
+    }
+    components.push(node);
+  }
+
+  // Combine components into a component set
+  const componentSet = figma.combineAsVariants(components, figma.currentPage);
+
+  // Rename if name provided
+  if (name) {
+    componentSet.name = name;
+  }
+
+  // Extract variant group properties
+  const variantGroupProperties: Record<string, { values: string[] }> = {};
+  if (componentSet.variantGroupProperties) {
+    for (const [propName, propData] of Object.entries(componentSet.variantGroupProperties)) {
+      variantGroupProperties[propName] = {
+        values: propData.values,
+      };
+    }
+  }
+
+  return {
+    id: componentSet.id,
+    name: componentSet.name,
+    key: componentSet.key,
+    type: 'COMPONENT_SET',
+    description: componentSet.description,
+    componentIds: componentSet.children.map(child => child.id),
+    variantGroupProperties,
+  };
+}
+
+/**
+ * Get properties of a component or component set
+ */
+export async function getComponentProperties(
+  params: CommandParams['get_component_properties']
+): Promise<{
+  componentId: string;
+  componentName: string;
+  componentType: 'COMPONENT' | 'COMPONENT_SET';
+  properties: ComponentPropertyInfo[];
+}> {
+  const { componentId } = params;
+
+  if (!componentId) {
+    throw new Error('Missing componentId parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(componentId);
+  if (!node) {
+    throw new Error(`Node not found: ${componentId}`);
+  }
+
+  if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') {
+    throw new Error(`Node is not a component or component set (type: ${node.type})`);
+  }
+
+  const componentNode = node as ComponentNode | ComponentSetNode;
+  const properties: ComponentPropertyInfo[] = [];
+
+  // Get component properties
+  if (componentNode.componentPropertyDefinitions) {
+    for (const [propName, propDef] of Object.entries(componentNode.componentPropertyDefinitions)) {
+      properties.push({
+        name: propName,
+        type: propDef.type,
+        defaultValue: propDef.defaultValue,
+        preferredValues: propDef.preferredValues?.map(pv => ({
+          type: pv.type,
+          key: pv.key,
+        })),
+        variantOptions: propDef.variantOptions,
+      });
+    }
+  }
+
+  return {
+    componentId: componentNode.id,
+    componentName: componentNode.name,
+    componentType: componentNode.type as 'COMPONENT' | 'COMPONENT_SET',
+    properties,
+  };
+}
+
+/**
+ * Add a property to a component or component set
+ */
+export async function addComponentProperty(
+  params: CommandParams['add_component_property']
+): Promise<{
+  success: boolean;
+  componentId: string;
+  propertyName: string;
+  propertyType: string;
+}> {
+  const { componentId, propertyName, propertyType, defaultValue, preferredValues, variantOptions } = params;
+
+  if (!componentId) {
+    throw new Error('Missing componentId parameter');
+  }
+  if (!propertyName) {
+    throw new Error('Missing propertyName parameter');
+  }
+  if (!propertyType) {
+    throw new Error('Missing propertyType parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(componentId);
+  if (!node) {
+    throw new Error(`Node not found: ${componentId}`);
+  }
+
+  if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') {
+    throw new Error(`Node is not a component or component set (type: ${node.type})`);
+  }
+
+  const componentNode = node as ComponentNode | ComponentSetNode;
+
+  // Create the property definition
+  const propertyDef: ComponentPropertyDefinition = {
+    type: propertyType,
+    defaultValue: defaultValue,
+  };
+
+  if (preferredValues) {
+    propertyDef.preferredValues = preferredValues;
+  }
+
+  if (variantOptions) {
+    propertyDef.variantOptions = variantOptions;
+  }
+
+  // Add the property
+  componentNode.addComponentProperty(propertyName, propertyDef.type, propertyDef.defaultValue);
+
+  return {
+    success: true,
+    componentId: componentNode.id,
+    propertyName,
+    propertyType,
+  };
+}
+
+/**
+ * Set a component property value on an instance
+ */
+export async function setComponentPropertyValue(
+  params: CommandParams['set_component_property_value']
+): Promise<{
+  success: boolean;
+  instanceId: string;
+  propertyName: string;
+  value: string | boolean;
+}> {
+  const { instanceId, propertyName, value } = params;
+
+  if (!instanceId) {
+    throw new Error('Missing instanceId parameter');
+  }
+  if (!propertyName) {
+    throw new Error('Missing propertyName parameter');
+  }
+  if (value === undefined) {
+    throw new Error('Missing value parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(instanceId);
+  if (!node) {
+    throw new Error(`Node not found: ${instanceId}`);
+  }
+
+  if (node.type !== 'INSTANCE') {
+    throw new Error(`Node is not an instance (type: ${node.type})`);
+  }
+
+  const instance = node as InstanceNode;
+
+  // Set the property value
+  instance.setProperties({
+    [propertyName]: value,
+  });
+
+  return {
+    success: true,
+    instanceId: instance.id,
+    propertyName,
+    value,
   };
 }
 

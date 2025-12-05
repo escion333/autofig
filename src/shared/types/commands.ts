@@ -2,7 +2,7 @@
  * Command and response type definitions for MCP ↔ Plugin communication
  */
 
-import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType } from './figma';
+import type { RGBA, LayoutMode, LayoutWrap, LayoutSizing, PrimaryAxisAlignItems, CounterAxisAlignItems, ExportFormat, FilteredNode, NodeType, ComponentPropertyType } from './figma';
 
 // ============================================================================
 // Command Types (All supported commands)
@@ -62,7 +62,12 @@ export type FigmaCommand =
   // Components
   | 'get_styles'
   | 'get_local_components'
+  | 'create_component'
+  | 'create_component_set'
   | 'create_component_instance'
+  | 'get_component_properties'
+  | 'add_component_property'
+  | 'set_component_property_value'
   | 'get_instance_overrides'
   | 'set_instance_overrides'
   // Text
@@ -315,11 +320,35 @@ export interface CommandParams {
   // Components
   get_styles: Record<string, never>;
   get_local_components: Record<string, never>;
+  create_component: {
+    nodeId: string;
+    name?: string;
+  };
+  create_component_set: {
+    componentIds: string[];
+    name?: string;
+  };
   create_component_instance: {
     componentKey: string;
     x?: number;
     y?: number;
     parentId?: string;
+  };
+  get_component_properties: {
+    componentId: string;
+  };
+  add_component_property: {
+    componentId: string;
+    propertyName: string;
+    propertyType: ComponentPropertyType;
+    defaultValue: string | boolean;
+    preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
+    variantOptions?: string[];
+  };
+  set_component_property_value: {
+    instanceId: string;
+    propertyName: string;
+    value: string | boolean;
   };
   get_instance_overrides: {
     instanceNodeId?: string;
@@ -537,5 +566,37 @@ export interface VariableInfo {
   hiddenFromPublishing: boolean;
   scopes: string[];
   codeSyntax: Record<string, string>;
+}
+
+// ============================================================================
+// Component Types
+// ============================================================================
+
+export interface ComponentInfo {
+  id: string;
+  name: string;
+  key: string;
+  type: 'COMPONENT';
+  description?: string;
+  documentationLinks?: string[];
+  remote: boolean;
+}
+
+export interface ComponentSetInfo {
+  id: string;
+  name: string;
+  key: string;
+  type: 'COMPONENT_SET';
+  description?: string;
+  componentIds: string[];
+  variantGroupProperties: Record<string, { values: string[] }>;
+}
+
+export interface ComponentPropertyInfo {
+  name: string;
+  type: ComponentPropertyType;
+  defaultValue: string | boolean;
+  preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
+  variantOptions?: string[];
 }
 

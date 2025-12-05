@@ -1405,6 +1405,191 @@ server.tool(
   }
 );
 
+// =============================================================================
+// Component Creation Tools
+// =============================================================================
+
+// Create Component Tool
+server.tool(
+  "create_component",
+  "Convert an existing node (frame, group, shape) into a reusable component. The component can then be instantiated multiple times and will update all instances when modified.",
+  {
+    nodeId: z.string().describe("The ID of the node to convert to a component (must be a FRAME, GROUP, or shape)"),
+    name: z.string().optional().describe("Optional name for the component"),
+  },
+  async ({ nodeId, name }: { nodeId: string; name?: string }) => {
+    try {
+      const result = await sendCommandToFigma("create_component", { nodeId, name });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating component: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Component Set Tool
+server.tool(
+  "create_component_set",
+  "Combine multiple components into a component set (variant group). Components must have variant-compatible names (e.g., 'Button/Size=Small', 'Button/Size=Large'). Use this to create button variants, icon sets, etc.",
+  {
+    componentIds: z.array(z.string()).describe("Array of component IDs to combine into a variant set (minimum 2)"),
+    name: z.string().optional().describe("Optional name for the component set"),
+  },
+  async ({ componentIds, name }: { componentIds: string[]; name?: string }) => {
+    try {
+      const result = await sendCommandToFigma("create_component_set", { componentIds, name });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating component set: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Component Properties Tool
+server.tool(
+  "get_component_properties",
+  "Get all properties defined on a component or component set. Returns property names, types, default values, and variant options.",
+  {
+    componentId: z.string().describe("The ID of the component or component set"),
+  },
+  async ({ componentId }: { componentId: string }) => {
+    try {
+      const result = await sendCommandToFigma("get_component_properties", { componentId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting component properties: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Add Component Property Tool
+server.tool(
+  "add_component_property",
+  "Add a new property to a component or component set. Properties allow instances to be customized (e.g., toggle visibility, swap icons, change text).",
+  {
+    componentId: z.string().describe("The ID of the component or component set"),
+    propertyName: z.string().describe("Name of the property (e.g., 'showIcon', 'label', 'iconSlot')"),
+    propertyType: z.enum(["BOOLEAN", "TEXT", "INSTANCE_SWAP", "VARIANT"]).describe("Type of property: BOOLEAN for toggles, TEXT for strings, INSTANCE_SWAP for swappable components, VARIANT for variant selection"),
+    defaultValue: z.union([z.string(), z.boolean()]).describe("Default value for the property (string for TEXT/INSTANCE_SWAP/VARIANT, boolean for BOOLEAN)"),
+    preferredValues: z.array(z.object({
+      type: z.enum(["COMPONENT", "COMPONENT_SET"]),
+      key: z.string(),
+    })).optional().describe("For INSTANCE_SWAP: preferred components that can be swapped in"),
+    variantOptions: z.array(z.string()).optional().describe("For VARIANT type: array of variant option values"),
+  },
+  async ({ componentId, propertyName, propertyType, defaultValue, preferredValues, variantOptions }: {
+    componentId: string;
+    propertyName: string;
+    propertyType: "BOOLEAN" | "TEXT" | "INSTANCE_SWAP" | "VARIANT";
+    defaultValue: string | boolean;
+    preferredValues?: Array<{ type: "COMPONENT" | "COMPONENT_SET"; key: string }>;
+    variantOptions?: string[];
+  }) => {
+    try {
+      const result = await sendCommandToFigma("add_component_property", {
+        componentId,
+        propertyName,
+        propertyType,
+        defaultValue,
+        preferredValues,
+        variantOptions,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding component property: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Component Property Value Tool
+server.tool(
+  "set_component_property_value",
+  "Set the value of a component property on an instance. Use this to customize instances (e.g., toggle icon visibility, change label text).",
+  {
+    instanceId: z.string().describe("The ID of the component instance"),
+    propertyName: z.string().describe("Name of the property to set"),
+    value: z.union([z.string(), z.boolean()]).describe("Value to set (must match property type)"),
+  },
+  async ({ instanceId, propertyName, value }: { instanceId: string; propertyName: string; value: string | boolean }) => {
+    try {
+      const result = await sendCommandToFigma("set_component_property_value", { instanceId, propertyName, value });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting component property value: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Get Annotations Tool
 server.tool(
   "get_annotations",
