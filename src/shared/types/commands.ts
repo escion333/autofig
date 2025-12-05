@@ -21,10 +21,22 @@ export type FigmaCommand =
   | 'create_rectangle'
   | 'create_frame'
   | 'create_text'
+  | 'create_ellipse'
   // Styling
   | 'set_fill_color'
   | 'set_stroke_color'
   | 'set_corner_radius'
+  | 'set_opacity'
+  // Organization
+  | 'group_nodes'
+  | 'ungroup_node'
+  // Typography
+  | 'get_available_fonts'
+  | 'load_font'
+  | 'get_text_styles'
+  | 'create_text_style'
+  | 'apply_text_style'
+  | 'set_text_properties'
   // Layout
   | 'move_node'
   | 'resize_node'
@@ -112,9 +124,22 @@ export interface CommandParams {
     text?: string;
     fontSize?: number;
     fontWeight?: number;
+    fontFamily?: string;
+    fontStyle?: string;
     fontColor?: RGBA;
     name?: string;
     parentId?: string;
+  };
+  create_ellipse: {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    name?: string;
+    parentId?: string;
+    fillColor?: RGBA;
+    strokeColor?: RGBA;
+    strokeWeight?: number;
   };
 
   // Styling
@@ -134,6 +159,58 @@ export interface CommandParams {
     topRightRadius?: number;
     bottomLeftRadius?: number;
     bottomRightRadius?: number;
+  };
+  set_opacity: {
+    nodeId: string;
+    opacity: number;
+  };
+
+  // Organization
+  group_nodes: {
+    nodeIds: string[];
+    name?: string;
+  };
+  ungroup_node: {
+    nodeId: string;
+  };
+
+  // Typography
+  get_available_fonts: {
+    filter?: string;
+  };
+  load_font: {
+    family: string;
+    style?: string;
+  };
+  get_text_styles: Record<string, never>;
+  create_text_style: {
+    name: string;
+    fontFamily?: string;
+    fontStyle?: string;
+    fontSize?: number;
+    letterSpacing?: number;
+    lineHeight?: number | 'AUTO';
+    paragraphSpacing?: number;
+    textCase?: 'ORIGINAL' | 'UPPER' | 'LOWER' | 'TITLE';
+    textDecoration?: 'NONE' | 'UNDERLINE' | 'STRIKETHROUGH';
+  };
+  apply_text_style: {
+    nodeId: string;
+    styleId?: string;
+    styleName?: string;
+  };
+  set_text_properties: {
+    nodeId: string;
+    fontFamily?: string;
+    fontStyle?: string;
+    fontSize?: number;
+    letterSpacing?: number;
+    lineHeight?: number | 'AUTO';
+    paragraphSpacing?: number;
+    textCase?: 'ORIGINAL' | 'UPPER' | 'LOWER' | 'TITLE';
+    textDecoration?: 'NONE' | 'UNDERLINE' | 'STRIKETHROUGH';
+    textAlignHorizontal?: 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED';
+    textAlignVertical?: 'TOP' | 'CENTER' | 'BOTTOM';
   };
 
   // Layout

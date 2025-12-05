@@ -209,7 +209,35 @@ assertNodeCapability(node, 'fills', `Node does not support fills: ${nodeId}`);
 ### Loading Fonts
 
 ```typescript
+// Load a font before using it
 await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+
+// Load custom font
+await figma.loadFontAsync({ family: 'Roboto', style: 'Bold' });
+```
+
+### Creating Text Styles
+
+```typescript
+// Create a reusable text style
+const style = figma.createTextStyle();
+style.name = 'Heading/H1';
+style.fontName = { family: 'Inter', style: 'Bold' };
+style.fontSize = 32;
+style.lineHeight = { value: 40, unit: 'PIXELS' };
+style.letterSpacing = { value: -0.5, unit: 'PIXELS' };
+```
+
+### Setting Text Properties
+
+```typescript
+// Set text node properties
+textNode.fontSize = 24;
+textNode.lineHeight = { unit: 'AUTO' };  // or { value: 32, unit: 'PIXELS' }
+textNode.letterSpacing = { value: 0.5, unit: 'PIXELS' };
+textNode.textCase = 'UPPER';  // ORIGINAL, UPPER, LOWER, TITLE
+textNode.textDecoration = 'UNDERLINE';  // NONE, UNDERLINE, STRIKETHROUGH
+textNode.textAlignHorizontal = 'CENTER';  // LEFT, CENTER, RIGHT, JUSTIFIED
 ```
 
 ### Progress Updates (for long operations)
@@ -296,6 +324,8 @@ color: z.object({
 | `src/shared/types/figma.ts` | Figma types (RGBA, Paint, etc.) | Adding new Figma types |
 | `src/talk_to_figma_mcp/server.ts` | MCP server, tool definitions | Adding new tools |
 | `src/figma-plugin/handlers/` | Plugin command handlers | Implementing tool logic |
+| `src/figma-plugin/handlers/typography.ts` | Typography handlers | Font & text style tools |
+| `src/figma-plugin/handlers/organization.ts` | Node organization | Group/ungroup tools |
 | `src/figma-plugin/handlers/index.ts` | Command dispatcher | Registering new handlers |
 | `src/cursor_mcp_plugin/code.js` | **Build output - DO NOT EDIT** | N/A |
 | `src/cursor_mcp_plugin/ui.html` | Plugin UI | Rarely needed |

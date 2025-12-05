@@ -528,7 +528,7 @@ server.tool(
 // Create Text Tool
 server.tool(
   "create_text",
-  "Create a new text element in Figma",
+  "Create a new text element in Figma with custom font support",
   {
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
@@ -538,6 +538,14 @@ server.tool(
       .number()
       .optional()
       .describe("Font weight (e.g., 400 for Regular, 700 for Bold)"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Font family name (default: 'Inter'). Examples: 'Roboto', 'Open Sans', 'Poppins'"),
+    fontStyle: z
+      .string()
+      .optional()
+      .describe("Font style (e.g., 'Regular', 'Bold', 'Italic', 'Medium'). If not provided, derived from fontWeight"),
     fontColor: z
       .object({
         r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -561,7 +569,7 @@ server.tool(
       .optional()
       .describe("Optional parent node ID to append the text to"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontFamily, fontStyle, fontColor, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -569,16 +577,18 @@ server.tool(
         text,
         fontSize: fontSize || 14,
         fontWeight: fontWeight || 400,
+        fontFamily: fontFamily || "Inter",
+        fontStyle: fontStyle,
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
         name: name || "Text",
         parentId,
       });
-      const typedResult = result as { name: string; id: string };
+      const typedResult = result as { name: string; id: string; fontFamily?: string; fontStyle?: string };
       return {
         content: [
           {
             type: "text",
-            text: `Created text "${typedResult.name}" with ID: ${typedResult.id}`,
+            text: `Created text "${typedResult.name}" with ID: ${typedResult.id} using font: ${typedResult.fontFamily || fontFamily || 'Inter'} ${typedResult.fontStyle || ''}`.trim(),
           },
         ],
       };
@@ -588,6 +598,86 @@ server.tool(
           {
             type: "text",
             text: `Error creating text: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Ellipse Tool
+server.tool(
+  "create_ellipse",
+  "Create a new ellipse (circle or oval) in Figma",
+  {
+    x: z.number().describe("X position"),
+    y: z.number().describe("Y position"),
+    width: z.number().describe("Width of the ellipse"),
+    height: z.number().describe("Height of the ellipse (same as width for a circle)"),
+    name: z.string().optional().describe("Optional name for the ellipse"),
+    parentId: z
+      .string()
+      .optional()
+      .describe("Optional parent node ID to append the ellipse to"),
+    fillColor: z
+      .object({
+        r: z.number().min(0).max(1).describe("Red component (0-1)"),
+        g: z.number().min(0).max(1).describe("Green component (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+        a: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe("Alpha component (0-1)"),
+      })
+      .optional()
+      .describe("Fill color in RGBA format"),
+    strokeColor: z
+      .object({
+        r: z.number().min(0).max(1).describe("Red component (0-1)"),
+        g: z.number().min(0).max(1).describe("Green component (0-1)"),
+        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+        a: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe("Alpha component (0-1)"),
+      })
+      .optional()
+      .describe("Stroke color in RGBA format"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+  },
+  async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_ellipse", {
+        x,
+        y,
+        width,
+        height,
+        name: name || "Ellipse",
+        parentId,
+        fillColor,
+        strokeColor,
+        strokeWeight,
+      });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created ellipse "${typedResult.name}" with ID: ${typedResult.id}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating ellipse: ${error instanceof Error ? error.message : String(error)
               }`,
           },
         ],
@@ -1359,6 +1449,365 @@ server.tool(
             type: "text",
             text: `Error setting corner radius: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Opacity Tool
+server.tool(
+  "set_opacity",
+  "Set the opacity of a node in Figma (0 = fully transparent, 1 = fully opaque)",
+  {
+    nodeId: z.string().describe("The ID of the node to modify"),
+    opacity: z.number().min(0).max(1).describe("Opacity value (0-1, where 0 is fully transparent and 1 is fully opaque)"),
+  },
+  async ({ nodeId, opacity }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_opacity", {
+        nodeId,
+        opacity,
+      });
+      const typedResult = result as { name: string; opacity: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set opacity of node "${typedResult.name}" to ${(typedResult.opacity * 100).toFixed(0)}%`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting opacity: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Group Nodes Tool
+server.tool(
+  "group_nodes",
+  "Group multiple nodes together in Figma. All nodes must have the same parent.",
+  {
+    nodeIds: z.array(z.string()).min(2).describe("Array of node IDs to group together (minimum 2 nodes)"),
+    name: z.string().optional().describe("Optional name for the group (default: 'Group')"),
+  },
+  async ({ nodeIds, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("group_nodes", {
+        nodeIds,
+        name: name || "Group",
+      });
+      const typedResult = result as { name: string; id: string; childCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created group "${typedResult.name}" with ID: ${typedResult.id} containing ${typedResult.childCount} nodes`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error grouping nodes: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Ungroup Node Tool
+server.tool(
+  "ungroup_node",
+  "Ungroup a group node in Figma, moving its children to the group's parent",
+  {
+    nodeId: z.string().describe("The ID of the group node to ungroup"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("ungroup_node", {
+        nodeId,
+      });
+      const typedResult = result as { ungroupedNodes: Array<{ name: string; id: string }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Ungrouped ${typedResult.ungroupedNodes.length} nodes: ${typedResult.ungroupedNodes.map(n => `"${n.name}" (${n.id})`).join(', ')}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error ungrouping node: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Typography Tools
+// ============================================================================
+
+// Get Available Fonts Tool
+server.tool(
+  "get_available_fonts",
+  "Get a list of all available fonts in Figma. Use this to discover fonts before using them with create_text or set_text_properties.",
+  {
+    filter: z.string().optional().describe("Optional filter to search fonts by family name (case-insensitive)"),
+  },
+  async ({ filter }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_available_fonts", { filter });
+      const typedResult = result as { fonts: Array<{ family: string; styles: string[] }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${typedResult.fonts.length} font families${filter ? ` matching "${filter}"` : ''}:\n${
+              typedResult.fonts.slice(0, 50).map(f => `- ${f.family}: ${f.styles.join(', ')}`).join('\n')
+            }${typedResult.fonts.length > 50 ? `\n... and ${typedResult.fonts.length - 50} more` : ''}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting available fonts: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Load Font Tool
+server.tool(
+  "load_font",
+  "Load a font for use in the Figma document. Must be called before using a font with create_text or set_text_properties.",
+  {
+    family: z.string().describe("The font family name (e.g., 'Roboto', 'Open Sans')"),
+    style: z.string().optional().describe("The font style (e.g., 'Regular', 'Bold', 'Italic'). Default: 'Regular'"),
+  },
+  async ({ family, style }: any) => {
+    try {
+      const result = await sendCommandToFigma("load_font", {
+        family,
+        style: style || "Regular",
+      });
+      const typedResult = result as { success: boolean; family: string; style: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully loaded font: ${typedResult.family} ${typedResult.style}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error loading font: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Text Styles Tool
+server.tool(
+  "get_text_styles",
+  "Get all local text styles defined in the Figma document",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_text_styles", {});
+      const typedResult = result as { styles: Array<{ id: string; name: string; fontFamily: string; fontStyle: string; fontSize: number }> };
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.styles.length > 0
+              ? `Found ${typedResult.styles.length} text styles:\n${
+                  typedResult.styles.map(s => `- "${s.name}" (ID: ${s.id}): ${s.fontFamily} ${s.fontStyle}, ${s.fontSize}px`).join('\n')
+                }`
+              : 'No text styles found in document. Use create_text_style to create one.',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting text styles: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Text Style Tool
+server.tool(
+  "create_text_style",
+  "Create a new reusable text style in Figma. Text styles define typography properties that can be applied to multiple text nodes.",
+  {
+    name: z.string().describe("Name for the text style (e.g., 'Heading 1', 'Body Text')"),
+    fontFamily: z.string().optional().describe("Font family (default: 'Inter')"),
+    fontStyle: z.string().optional().describe("Font style (default: 'Regular')"),
+    fontSize: z.number().positive().optional().describe("Font size in pixels (default: 14)"),
+    letterSpacing: z.number().optional().describe("Letter spacing in pixels"),
+    lineHeight: z.union([z.number().positive(), z.literal("AUTO")]).optional().describe("Line height in pixels, or 'AUTO' for automatic"),
+    paragraphSpacing: z.number().min(0).optional().describe("Spacing between paragraphs in pixels"),
+    textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).optional().describe("Text case transformation"),
+    textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).optional().describe("Text decoration"),
+  },
+  async ({ name, fontFamily, fontStyle, fontSize, letterSpacing, lineHeight, paragraphSpacing, textCase, textDecoration }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_text_style", {
+        name,
+        fontFamily: fontFamily || "Inter",
+        fontStyle: fontStyle || "Regular",
+        fontSize: fontSize || 14,
+        letterSpacing,
+        lineHeight,
+        paragraphSpacing,
+        textCase,
+        textDecoration,
+      });
+      const typedResult = result as { id: string; name: string; fontFamily: string; fontStyle: string; fontSize: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created text style "${typedResult.name}" (ID: ${typedResult.id}) with ${typedResult.fontFamily} ${typedResult.fontStyle}, ${typedResult.fontSize}px`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating text style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Apply Text Style Tool
+server.tool(
+  "apply_text_style",
+  "Apply a text style to a text node. You can specify either the style ID or the style name.",
+  {
+    nodeId: z.string().describe("The ID of the text node to style"),
+    styleId: z.string().optional().describe("The ID of the text style to apply"),
+    styleName: z.string().optional().describe("The name of the text style to apply (alternative to styleId)"),
+  },
+  async ({ nodeId, styleId, styleName }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_text_style", {
+        nodeId,
+        styleId,
+        styleName,
+      });
+      const typedResult = result as { id: string; name: string; textStyleName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Applied text style "${typedResult.textStyleName}" to node "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error applying text style: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Text Properties Tool
+server.tool(
+  "set_text_properties",
+  "Set typography properties on a text node. Use this for fine-grained control over text appearance.",
+  {
+    nodeId: z.string().describe("The ID of the text node to modify"),
+    fontFamily: z.string().optional().describe("Font family (e.g., 'Roboto', 'Open Sans')"),
+    fontStyle: z.string().optional().describe("Font style (e.g., 'Regular', 'Bold', 'Italic')"),
+    fontSize: z.number().positive().optional().describe("Font size in pixels"),
+    letterSpacing: z.number().optional().describe("Letter spacing in pixels"),
+    lineHeight: z.union([z.number().positive(), z.literal("AUTO")]).optional().describe("Line height in pixels, or 'AUTO' for automatic"),
+    paragraphSpacing: z.number().min(0).optional().describe("Spacing between paragraphs in pixels"),
+    textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).optional().describe("Text case transformation"),
+    textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).optional().describe("Text decoration"),
+    textAlignHorizontal: z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).optional().describe("Horizontal text alignment"),
+    textAlignVertical: z.enum(["TOP", "CENTER", "BOTTOM"]).optional().describe("Vertical text alignment"),
+  },
+  async ({ nodeId, fontFamily, fontStyle, fontSize, letterSpacing, lineHeight, paragraphSpacing, textCase, textDecoration, textAlignHorizontal, textAlignVertical }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_text_properties", {
+        nodeId,
+        fontFamily,
+        fontStyle,
+        fontSize,
+        letterSpacing,
+        lineHeight,
+        paragraphSpacing,
+        textCase,
+        textDecoration,
+        textAlignHorizontal,
+        textAlignVertical,
+      });
+      const typedResult = result as { id: string; name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated text properties for node "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting text properties: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
