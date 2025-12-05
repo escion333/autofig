@@ -293,4 +293,3 @@ export async function createText(params: CommandParams['create_text']): Promise<
     parentId: textNode.parent?.id,
   };
 }
-
