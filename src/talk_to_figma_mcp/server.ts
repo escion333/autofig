@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
+import type { FigmaCommand } from "../shared/types";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -75,7 +76,7 @@ let currentChannel: string | null = null;
 
 // Create MCP server
 const server = new McpServer({
-  name: "TalkToFigmaMCP",
+  name: "AutoFig",
   version: "1.0.0",
 });
 
@@ -2605,201 +2606,6 @@ This detailed process ensures you correctly interpret the reaction data, prepare
     };
   }
 );
-
-
-// Define command types and parameters
-type FigmaCommand =
-  | "get_document_info"
-  | "get_selection"
-  | "get_node_info"
-  | "get_nodes_info"
-  | "read_my_design"
-  | "create_rectangle"
-  | "create_frame"
-  | "create_text"
-  | "set_fill_color"
-  | "set_stroke_color"
-  | "move_node"
-  | "resize_node"
-  | "delete_node"
-  | "delete_multiple_nodes"
-  | "get_styles"
-  | "get_local_components"
-  | "create_component_instance"
-  | "get_instance_overrides"
-  | "set_instance_overrides"
-  | "export_node_as_image"
-  | "join"
-  | "set_corner_radius"
-  | "clone_node"
-  | "set_text_content"
-  | "scan_text_nodes"
-  | "set_multiple_text_contents"
-  | "get_annotations"
-  | "set_annotation"
-  | "set_multiple_annotations"
-  | "scan_nodes_by_types"
-  | "set_layout_mode"
-  | "set_padding"
-  | "set_axis_align"
-  | "set_layout_sizing"
-  | "set_item_spacing"
-  | "get_reactions"
-  | "set_default_connector"
-  | "create_connections"
-  | "set_focus"
-  | "set_selections";
-
-type CommandParams = {
-  get_document_info: Record<string, never>;
-  get_selection: Record<string, never>;
-  get_node_info: { nodeId: string };
-  get_nodes_info: { nodeIds: string[] };
-  create_rectangle: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    name?: string;
-    parentId?: string;
-  };
-  create_frame: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    name?: string;
-    parentId?: string;
-    fillColor?: { r: number; g: number; b: number; a?: number };
-    strokeColor?: { r: number; g: number; b: number; a?: number };
-    strokeWeight?: number;
-  };
-  create_text: {
-    x: number;
-    y: number;
-    text: string;
-    fontSize?: number;
-    fontWeight?: number;
-    fontColor?: { r: number; g: number; b: number; a?: number };
-    name?: string;
-    parentId?: string;
-  };
-  set_fill_color: {
-    nodeId: string;
-    r: number;
-    g: number;
-    b: number;
-    a?: number;
-  };
-  set_stroke_color: {
-    nodeId: string;
-    r: number;
-    g: number;
-    b: number;
-    a?: number;
-    weight?: number;
-  };
-  move_node: {
-    nodeId: string;
-    x: number;
-    y: number;
-  };
-  resize_node: {
-    nodeId: string;
-    width: number;
-    height: number;
-  };
-  delete_node: {
-    nodeId: string;
-  };
-  delete_multiple_nodes: {
-    nodeIds: string[];
-  };
-  get_styles: Record<string, never>;
-  get_local_components: Record<string, never>;
-  get_team_components: Record<string, never>;
-  create_component_instance: {
-    componentKey: string;
-    x: number;
-    y: number;
-  };
-  get_instance_overrides: {
-    instanceNodeId: string | null;
-  };
-  set_instance_overrides: {
-    targetNodeIds: string[];
-    sourceInstanceId: string;
-  };
-  export_node_as_image: {
-    nodeId: string;
-    format?: "PNG" | "JPG" | "SVG" | "PDF";
-    scale?: number;
-  };
-  execute_code: {
-    code: string;
-  };
-  join: {
-    channel: string;
-  };
-  set_corner_radius: {
-    nodeId: string;
-    radius: number;
-    corners?: boolean[];
-  };
-  clone_node: {
-    nodeId: string;
-    x?: number;
-    y?: number;
-  };
-  set_text_content: {
-    nodeId: string;
-    text: string;
-  };
-  scan_text_nodes: {
-    nodeId: string;
-    useChunking: boolean;
-    chunkSize: number;
-  };
-  set_multiple_text_contents: {
-    nodeId: string;
-    text: Array<{ nodeId: string; text: string }>;
-  };
-  get_annotations: {
-    nodeId?: string;
-    includeCategories?: boolean;
-  };
-  set_annotation: {
-    nodeId: string;
-    annotationId?: string;
-    labelMarkdown: string;
-    categoryId?: string;
-    properties?: Array<{ type: string }>;
-  };
-  set_multiple_annotations: SetMultipleAnnotationsParams;
-  scan_nodes_by_types: {
-    nodeId: string;
-    types: Array<string>;
-  };
-  get_reactions: { nodeIds: string[] };
-  set_default_connector: {
-    connectorId?: string | undefined;
-  };
-  create_connections: {
-    connections: Array<{
-      startNodeId: string;
-      endNodeId: string;
-      text?: string;
-    }>;
-  };
-  set_focus: {
-    nodeId: string;
-  };
-  set_selections: {
-    nodeIds: string[];
-  };
-
-};
-
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
