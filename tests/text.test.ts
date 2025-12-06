@@ -15,7 +15,7 @@ interface MockTextNode {
   name: string;
   type: 'TEXT';
   characters: string;
-  fontName: FontName | typeof figma.mixed;
+  fontName: FontName | symbol; // symbol for mixed
   fontSize: number;
   fontWeight: number;
   getRangeFontName?: (start: number, end: number) => FontName;
@@ -102,7 +102,7 @@ describe('Text API', () => {
 
     it('should handle mixed fonts by using first character font', async () => {
       const textNode = createMockTextNode('text-1', 'Title', 'Mixed');
-      textNode.fontName = (globalThis as any).figma.mixed;
+      textNode.fontName = figmaMock.mixed;
       textNode.getRangeFontName = vi.fn().mockReturnValue({ family: 'Arial', style: 'Regular' });
       figmaMock.getNodeByIdAsync.mockResolvedValue(textNode);
 

@@ -165,8 +165,13 @@ function createMockCollection(name: string, modes?: string[]): MockVariableColle
   return collection;
 }
 
+// Unique symbol to represent mixed values (like Figma's figma.mixed)
+const MIXED_SYMBOL = Symbol('mixed');
+
 // Create global figma mock
 const figmaMock = {
+  // Mixed symbol for properties that can have mixed values (e.g., fontName in text nodes)
+  mixed: MIXED_SYMBOL,
   variables: {
     getLocalVariableCollectionsAsync: vi.fn().mockResolvedValue(mockCollections),
     getLocalVariablesAsync: vi.fn().mockResolvedValue(mockVariables),

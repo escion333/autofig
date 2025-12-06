@@ -364,6 +364,9 @@ export async function addDropShadow(
 
   blendNode.effects = [...existingEffects, newShadow];
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Added drop shadow to ${node.name}`);
+
   return {
     success: true,
     nodeId: node.id,

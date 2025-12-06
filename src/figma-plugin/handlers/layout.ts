@@ -332,3 +332,275 @@ export async function setConstraints(
   };
 }
 
+// ============================================================================
+// Layer Reordering Operations
+// ============================================================================
+
+/**
+ * Reorder a node to a specific index within its parent
+ */
+export async function reorderNode(params: CommandParams['reorder_node']): Promise<NodeResult> {
+  const { nodeId, index } = params || {};
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to reorder.'
+    );
+  }
+
+  if (index === undefined) {
+    throw new Error(
+      'Missing index parameter\n' +
+      '💡 Tip: Provide the target index (0 = first, 1 = second, etc.)'
+    );
+  }
+
+  const node = await getNodeById(nodeId);
+
+  if (!node.parent) {
+    throw new Error(
+      `Node has no parent: ${nodeId}\n` +
+      `💡 Tip: Only nodes with a parent can be reordered.`
+    );
+  }
+
+  const parent = node.parent;
+
+  if (!('children' in parent)) {
+    throw new Error(
+      `Parent node does not support children: ${parent.id}\n` +
+      `💡 Tip: Node must be inside a frame, group, or page.`
+    );
+  }
+
+  const currentIndex = (parent as ChildrenMixin).children.indexOf(node as SceneNode);
+  const maxIndex = (parent as ChildrenMixin).children.length - 1;
+
+  if (index < 0 || index > maxIndex) {
+    throw new Error(
+      `Index out of bounds: ${index} (valid range: 0-${maxIndex})\n` +
+      `💡 Tip: Parent has ${(parent as ChildrenMixin).children.length} children.`
+    );
+  }
+
+  // Move node to the specified index
+  (parent as ChildrenMixin).insertChild(index, node as SceneNode);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Reordered: ${node.name} (index ${currentIndex} → ${index})`);
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    parentId: parent.id,
+  };
+}
+
+/**
+ * Move node to the front (top of layer stack)
+ */
+export async function moveToFront(params: CommandParams['move_to_front']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to move.'
+    );
+  }
+
+  const node = await getNodeById(nodeId);
+
+  if (!node.parent) {
+    throw new Error(
+      `Node has no parent: ${nodeId}\n` +
+      `💡 Tip: Only nodes with a parent can be moved.`
+    );
+  }
+
+  const parent = node.parent;
+
+  if (!('children' in parent)) {
+    throw new Error(
+      `Parent node does not support children: ${parent.id}\n` +
+      `💡 Tip: Node must be inside a frame, group, or page.`
+    );
+  }
+
+  const maxIndex = (parent as ChildrenMixin).children.length - 1;
+  (parent as ChildrenMixin).insertChild(maxIndex, node as SceneNode);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Moved to front: ${node.name}`);
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    parentId: parent.id,
+  };
+}
+
+/**
+ * Move node to the back (bottom of layer stack)
+ */
+export async function moveToBack(params: CommandParams['move_to_back']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to move.'
+    );
+  }
+
+  const node = await getNodeById(nodeId);
+
+  if (!node.parent) {
+    throw new Error(
+      `Node has no parent: ${nodeId}\n` +
+      `💡 Tip: Only nodes with a parent can be moved.`
+    );
+  }
+
+  const parent = node.parent;
+
+  if (!('children' in parent)) {
+    throw new Error(
+      `Parent node does not support children: ${parent.id}\n` +
+      `💡 Tip: Node must be inside a frame, group, or page.`
+    );
+  }
+
+  (parent as ChildrenMixin).insertChild(0, node as SceneNode);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Moved to back: ${node.name}`);
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    parentId: parent.id,
+  };
+}
+
+/**
+ * Move node forward one level (toward front)
+ */
+export async function moveForward(params: CommandParams['move_forward']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to move.'
+    );
+  }
+
+  const node = await getNodeById(nodeId);
+
+  if (!node.parent) {
+    throw new Error(
+      `Node has no parent: ${nodeId}\n` +
+      `💡 Tip: Only nodes with a parent can be moved.`
+    );
+  }
+
+  const parent = node.parent;
+
+  if (!('children' in parent)) {
+    throw new Error(
+      `Parent node does not support children: ${parent.id}\n` +
+      `💡 Tip: Node must be inside a frame, group, or page.`
+    );
+  }
+
+  const currentIndex = (parent as ChildrenMixin).children.indexOf(node as SceneNode);
+  const maxIndex = (parent as ChildrenMixin).children.length - 1;
+
+  if (currentIndex === maxIndex) {
+    // Already at front
+    figma.notify(`Node "${node.name}" is already at the front`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id,
+    };
+  }
+
+  const newIndex = currentIndex + 1;
+  (parent as ChildrenMixin).insertChild(newIndex, node as SceneNode);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Moved forward: ${node.name}`);
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    parentId: parent.id,
+  };
+}
+
+/**
+ * Move node backward one level (toward back)
+ */
+export async function moveBackward(params: CommandParams['move_backward']): Promise<NodeResult> {
+  const { nodeId } = params || {};
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to move.'
+    );
+  }
+
+  const node = await getNodeById(nodeId);
+
+  if (!node.parent) {
+    throw new Error(
+      `Node has no parent: ${nodeId}\n' +
+      '💡 Tip: Only nodes with a parent can be moved.`
+    );
+  }
+
+  const parent = node.parent;
+
+  if (!('children' in parent)) {
+    throw new Error(
+      `Parent node does not support children: ${parent.id}\n` +
+      `💡 Tip: Node must be inside a frame, group, or page.`
+    );
+  }
+
+  const currentIndex = (parent as ChildrenMixin).children.indexOf(node as SceneNode);
+
+  if (currentIndex === 0) {
+    // Already at back
+    figma.notify(`Node "${node.name}" is already at the back`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id,
+    };
+  }
+
+  const newIndex = currentIndex - 1;
+  (parent as ChildrenMixin).insertChild(newIndex, node as SceneNode);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Moved backward: ${node.name}`);
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    parentId: parent.id,
+  };
+}
+

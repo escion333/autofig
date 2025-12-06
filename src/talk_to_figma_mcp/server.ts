@@ -86,6 +86,7 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   
   // Export operations - can be slow for complex nodes
   'export_node_as_image': 90000,       // 90 seconds - complex exports
+  'export_multiple_nodes': 180000,     // 3 minutes - batch exports
   
   // Annotation operations - can be slow with many annotations
   'set_multiple_annotations': 90000,   // 90 seconds - batch annotations
@@ -790,6 +791,171 @@ server.tool(
   }
 );
 
+// ============================================================================
+// Layer Reordering Tools
+// ============================================================================
+
+// Reorder Node Tool
+server.tool(
+  "reorder_node",
+  "Move a node to a specific index (z-order) within its parent container. Index 0 is back (bottom), higher indices are toward front (top). Returns: {id, name, type, parentId}. Example: reorder_node(nodeId='123:456', index=2). Use to precisely control stacking order. Related: move_to_front, move_to_back, move_forward, move_backward",
+  {
+    nodeId: z.string().describe("The ID of the node to reorder"),
+    index: z.number().int().min(0).describe("Target index position (0 = back/bottom, higher = front/top)"),
+  },
+  async ({ nodeId, index }: any) => {
+    try {
+      const result = await sendCommandToFigma("reorder_node", { nodeId, index });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Reordered "${typedResult.name}" to index ${index} (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Move to Front Tool
+server.tool(
+  "move_to_front",
+  "Move a node to the front (top) of its parent's layer stack, making it render above all siblings. Returns: {id, name, type, parentId}. Example: move_to_front(nodeId='123:456'). Use to bring elements to foreground. Related: move_to_back, move_forward, move_backward, reorder_node",
+  {
+    nodeId: z.string().describe("The ID of the node to move to front"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("move_to_front", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved "${typedResult.name}" to front (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error moving node to front: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Move to Back Tool
+server.tool(
+  "move_to_back",
+  "Move a node to the back (bottom) of its parent's layer stack, making it render behind all siblings. Returns: {id, name, type, parentId}. Example: move_to_back(nodeId='123:456'). Use to send elements to background. Related: move_to_front, move_forward, move_backward, reorder_node",
+  {
+    nodeId: z.string().describe("The ID of the node to move to back"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("move_to_back", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved "${typedResult.name}" to back (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error moving node to back: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Move Forward Tool
+server.tool(
+  "move_forward",
+  "Move a node one level forward (up) in its parent's layer stack, swapping position with the node above it. Returns: {id, name, type, parentId}. Example: move_forward(nodeId='123:456'). Use for incremental layer adjustments. Related: move_backward, move_to_front, move_to_back, reorder_node",
+  {
+    nodeId: z.string().describe("The ID of the node to move forward"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("move_forward", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved "${typedResult.name}" forward one level (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error moving node forward: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Move Backward Tool
+server.tool(
+  "move_backward",
+  "Move a node one level backward (down) in its parent's layer stack, swapping position with the node below it. Returns: {id, name, type, parentId}. Example: move_backward(nodeId='123:456'). Use for incremental layer adjustments. Related: move_forward, move_to_front, move_to_back, reorder_node",
+  {
+    nodeId: z.string().describe("The ID of the node to move backward"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("move_backward", { nodeId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved "${typedResult.name}" backward one level (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error moving node backward: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Resize Node Tool
 server.tool(
   "resize_node",
@@ -930,6 +1096,53 @@ server.tool(
             type: "text",
             text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Export Multiple Nodes Tool
+server.tool(
+  "export_multiple_nodes",
+  "Export multiple nodes as images in a batch operation with progress tracking. Returns array of export results with base64-encoded image data. Example: export_multiple_nodes(nodeIds=['123:1', '456:2'], format='PNG', scale=2). Use for batch asset generation. Each export includes success status, nodeId, and data. Related: export_node_as_image",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to export"),
+    format: z
+      .enum(["PNG", "JPG", "SVG", "PDF"])
+      .optional()
+      .describe("Export format (default: PNG)"),
+    scale: z.number().positive().optional().describe("Export scale (default: 1)"),
+  },
+  async ({ nodeIds, format, scale }: any) => {
+    try {
+      const result = await sendCommandToFigma("export_multiple_nodes", {
+        nodeIds,
+        format: format || "PNG",
+        scale: scale || 1,
+      });
+      const typedResult = result as {
+        nodesExported: number;
+        nodesFailed: number;
+        totalNodes: number;
+        results: Array<{ success: boolean; nodeId: string; export?: any; error?: string }>;
+      };
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Batch export complete: ${typedResult.nodesExported} successful, ${typedResult.nodesFailed} failed out of ${typedResult.totalNodes} total nodes.\n\nResults:\n${typedResult.results.map((r, idx) => `${idx + 1}. ${r.nodeId}: ${r.success ? '✅ Success' : `❌ ${r.error}`}`).join('\n')}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error exporting multiple nodes: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -4371,6 +4584,304 @@ server.tool(
           {
             type: "text",
             text: `Error setting selections: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Page Management Tools
+// ============================================================================
+
+// Get Pages Tool
+server.tool(
+  "get_pages",
+  "Get all pages in the current Figma document with their names, IDs, and child counts. Returns: Array<{id: string, name: string, childCount: number}>. Example: get_pages(). Use this to discover available pages before switching, deleting, or renaming. Related: create_page, switch_page, delete_page, rename_page",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_pages");
+      const typedResult = result as Array<{ id: string; name: string; childCount: number }>;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${typedResult.length} page(s):\n${typedResult.map((page, idx) => `${idx + 1}. "${page.name}" (ID: ${page.id}, ${page.childCount} children)`).join('\n')}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Page Tool
+server.tool(
+  "create_page",
+  "Create a new page in the Figma document with the specified name. Automatically switches to the new page after creation. Returns: {id: string, name: string, type: 'PAGE'}. Example: create_page(name='Design System'). Use this to organize designs into separate pages. Related: get_pages, switch_page, delete_page, rename_page",
+  {
+    name: z.string().describe("Name for the new page (e.g., 'Design System', 'Components', 'Prototypes')"),
+  },
+  async ({ name }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_page", { name });
+      const typedResult = result as { id: string; name: string; type: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created and switched to new page "${typedResult.name}" (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating page: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Switch Page Tool
+server.tool(
+  "switch_page",
+  "Switch to a different page in the Figma document by its ID. Use get_pages() first to find available page IDs. Returns: {id: string, name: string, type: 'PAGE'}. Example: switch_page(pageId='123:456'). Use this to navigate between pages. Related: get_pages, create_page, delete_page, rename_page",
+  {
+    pageId: z.string().describe("The ID of the page to switch to (use get_pages to find page IDs)"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("switch_page", { pageId });
+      const typedResult = result as { id: string; name: string; type: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Switched to page "${typedResult.name}" (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error switching page: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Page Tool
+server.tool(
+  "delete_page",
+  "Delete a page from the Figma document. Cannot delete the last remaining page. If deleting the current page, automatically switches to another page first. Returns: {success: boolean, message: string}. Example: delete_page(pageId='123:456'). WARNING: This action cannot be undone (unless using Figma's undo). Related: get_pages, create_page, switch_page, rename_page",
+  {
+    pageId: z.string().describe("The ID of the page to delete (use get_pages to find page IDs)"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_page", { pageId });
+      const typedResult = result as { success: boolean; message: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.message,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting page: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Rename Page Tool
+server.tool(
+  "rename_page",
+  "Rename an existing page in the Figma document. Returns: {id: string, name: string, type: 'PAGE'}. Example: rename_page(pageId='123:456', name='New Page Name'). Use this to organize and clarify page purposes. Related: get_pages, create_page, switch_page, delete_page",
+  {
+    pageId: z.string().describe("The ID of the page to rename (use get_pages to find page IDs)"),
+    name: z.string().describe("The new name for the page"),
+  },
+  async ({ pageId, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("rename_page", { pageId, name });
+      const typedResult = result as { id: string; name: string; type: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Renamed page to "${typedResult.name}" (ID: ${typedResult.id})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming page: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Plugin Data Persistence Tools
+// ============================================================================
+
+// Set Plugin Data Tool
+server.tool(
+  "set_plugin_data",
+  "Store custom metadata on any node using key-value pairs. Data persists with the Figma file and survives plugin updates. Returns: {success: boolean, nodeId, key}. Example: set_plugin_data(nodeId='123:456', key='status', value='approved'). Use for tracking custom state, metadata, or flags. Related: get_plugin_data, get_all_plugin_data, delete_plugin_data",
+  {
+    nodeId: z.string().describe("The ID of the node to store data on"),
+    key: z.string().describe("Key name for the data (e.g., 'status', 'customMetadata')"),
+    value: z.string().describe("Value to store (must be string - stringify objects if needed)"),
+  },
+  async ({ nodeId, key, value }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_plugin_data", { nodeId, key, value });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set plugin data "${key}" on node ${nodeId}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting plugin data: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Plugin Data Tool
+server.tool(
+  "get_plugin_data",
+  "Retrieve custom metadata stored on a node by key. Returns: {nodeId, nodeName, key, value: string}. Example: get_plugin_data(nodeId='123:456', key='status'). Use to read previously stored custom data. Related: set_plugin_data, get_all_plugin_data, delete_plugin_data",
+  {
+    nodeId: z.string().describe("The ID of the node to read data from"),
+    key: z.string().describe("Key name of the data to retrieve"),
+  },
+  async ({ nodeId, key }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_plugin_data", { nodeId, key });
+      const typedResult = result as { nodeName: string; key: string; value: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Plugin data "${typedResult.key}" on "${typedResult.nodeName}": ${typedResult.value || '(empty)'}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting plugin data: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get All Plugin Data Tool
+server.tool(
+  "get_all_plugin_data",
+  "Retrieve all custom metadata keys and values stored on a node. Returns: {nodeId, nodeName, data: {key1: value1, key2: value2, ...}}. Example: get_all_plugin_data(nodeId='123:456'). Use to discover all stored data on a node. Related: set_plugin_data, get_plugin_data, delete_plugin_data",
+  {
+    nodeId: z.string().describe("The ID of the node to read all data from"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_all_plugin_data", { nodeId });
+      const typedResult = result as { nodeName: string; data: Record<string, string> };
+      const dataCount = Object.keys(typedResult.data).length;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${dataCount} plugin data key(s) on "${typedResult.nodeName}":\n${JSON.stringify(typedResult.data, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting all plugin data: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Plugin Data Tool
+server.tool(
+  "delete_plugin_data",
+  "Remove custom metadata from a node by key. Returns: {success: boolean, nodeId, key}. Example: delete_plugin_data(nodeId='123:456', key='status'). Use to clean up unused metadata. Related: set_plugin_data, get_plugin_data, get_all_plugin_data",
+  {
+    nodeId: z.string().describe("The ID of the node to delete data from"),
+    key: z.string().describe("Key name of the data to delete"),
+  },
+  async ({ nodeId, key }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_plugin_data", { nodeId, key });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Deleted plugin data "${key}" from node ${nodeId}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting plugin data: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

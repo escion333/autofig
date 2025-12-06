@@ -13,6 +13,15 @@ import {
   getNodesInfo,
   setFocus,
   setSelections,
+  getPages,
+  createPage,
+  switchPage,
+  deletePage,
+  renamePage,
+  setPluginData,
+  getPluginData,
+  getAllPluginData,
+  deletePluginData,
 } from './document';
 
 // Element Creation
@@ -84,7 +93,20 @@ import {
 } from './effects';
 
 // Layout & Constraints
-import { moveNode, resizeNode, deleteNode, deleteMultipleNodes, cloneNode, getConstraints, setConstraints } from './layout';
+import {
+  moveNode,
+  resizeNode,
+  deleteNode,
+  deleteMultipleNodes,
+  cloneNode,
+  getConstraints,
+  setConstraints,
+  reorderNode,
+  moveToFront,
+  moveToBack,
+  moveForward,
+  moveBackward,
+} from './layout';
 
 // Grid Styles
 import {
@@ -122,7 +144,7 @@ import { getAnnotations, setAnnotation, setMultipleAnnotations, scanNodesByTypes
 import { getReactions, setDefaultConnector, createConnections } from './prototyping';
 
 // Export
-import { exportNodeAsImage } from './export';
+import { exportNodeAsImage, exportMultipleNodes } from './export';
 
 // Re-export setCharacters for use in creation.ts
 export { setCharacters };
@@ -150,6 +172,28 @@ export async function handleCommand(
       return await setFocus(params as CommandParams['set_focus']);
     case 'set_selections':
       return await setSelections(params as CommandParams['set_selections']);
+
+    // Page Management
+    case 'get_pages':
+      return await getPages();
+    case 'create_page':
+      return await createPage(params as CommandParams['create_page']);
+    case 'switch_page':
+      return await switchPage(params as CommandParams['switch_page']);
+    case 'delete_page':
+      return await deletePage(params as CommandParams['delete_page']);
+    case 'rename_page':
+      return await renamePage(params as CommandParams['rename_page']);
+
+    // Plugin Data Persistence
+    case 'set_plugin_data':
+      return await setPluginData(params as CommandParams['set_plugin_data']);
+    case 'get_plugin_data':
+      return await getPluginData(params as CommandParams['get_plugin_data']);
+    case 'get_all_plugin_data':
+      return await getAllPluginData(params as CommandParams['get_all_plugin_data']);
+    case 'delete_plugin_data':
+      return await deletePluginData(params as CommandParams['delete_plugin_data']);
 
     // Element Creation
     case 'create_rectangle':
@@ -295,6 +339,18 @@ export async function handleCommand(
     case 'clone_node':
       return await cloneNode(params as CommandParams['clone_node']);
 
+    // Layer Reordering
+    case 'reorder_node':
+      return await reorderNode(params as CommandParams['reorder_node']);
+    case 'move_to_front':
+      return await moveToFront(params as CommandParams['move_to_front']);
+    case 'move_to_back':
+      return await moveToBack(params as CommandParams['move_to_back']);
+    case 'move_forward':
+      return await moveForward(params as CommandParams['move_forward']);
+    case 'move_backward':
+      return await moveBackward(params as CommandParams['move_backward']);
+
     // Auto Layout
     case 'set_layout_mode':
       return await setLayoutMode(params as CommandParams['set_layout_mode']);
@@ -358,6 +414,8 @@ export async function handleCommand(
     // Export
     case 'export_node_as_image':
       return await exportNodeAsImage(params as CommandParams['export_node_as_image']);
+    case 'export_multiple_nodes':
+      return await exportMultipleNodes(params as CommandParams['export_multiple_nodes']);
 
     default:
       throw new Error(`Unknown command: ${command}`);

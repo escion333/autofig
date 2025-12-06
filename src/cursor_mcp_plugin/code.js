@@ -295,6 +295,259 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setSelections, "setSelections");
+  async function getPages() {
+    const pages = figma.root.children;
+    return pages.map((page) => ({
+      id: page.id,
+      name: page.name,
+      childCount: page.children.length
+    }));
+  }
+  __name(getPages, "getPages");
+  async function createPage(params) {
+    const { name } = params;
+    if (!name) {
+      throw new Error(
+        'Missing name parameter\n\u{1F4A1} Tip: Provide a name for the new page, e.g., "Design System"'
+      );
+    }
+    const newPage = figma.createPage();
+    newPage.name = name;
+    figma.currentPage = newPage;
+    figma.notify(`\u2705 Created page "${name}"`);
+    return {
+      id: newPage.id,
+      name: newPage.name,
+      type: newPage.type
+    };
+  }
+  __name(createPage, "createPage");
+  async function switchPage(params) {
+    const { pageId } = params;
+    if (!pageId) {
+      throw new Error(
+        "Missing pageId parameter\n\u{1F4A1} Tip: Use get_pages to get IDs of available pages."
+      );
+    }
+    const page = await figma.getNodeByIdAsync(pageId);
+    if (!page) {
+      throw new Error(
+        `Page not found: ${pageId}
+The page may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    if (page.type !== "PAGE") {
+      throw new Error(
+        `Node is not a page: ${pageId} (type: ${page.type})
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    figma.currentPage = page;
+    figma.notify(`\u2705 Switched to page "${page.name}"`);
+    return {
+      id: page.id,
+      name: page.name,
+      type: page.type
+    };
+  }
+  __name(switchPage, "switchPage");
+  async function deletePage(params) {
+    const { pageId } = params;
+    if (!pageId) {
+      throw new Error(
+        "Missing pageId parameter\n\u{1F4A1} Tip: Use get_pages to get IDs of available pages."
+      );
+    }
+    const page = await figma.getNodeByIdAsync(pageId);
+    if (!page) {
+      throw new Error(
+        `Page not found: ${pageId}
+The page may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    if (page.type !== "PAGE") {
+      throw new Error(
+        `Node is not a page: ${pageId} (type: ${page.type})
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    if (figma.root.children.length === 1) {
+      throw new Error(
+        "Cannot delete the last page in the document.\n\u{1F4A1} Tip: Create a new page before deleting this one."
+      );
+    }
+    const pageName = page.name;
+    if (figma.currentPage.id === pageId) {
+      const otherPage = figma.root.children.find((p) => p.id !== pageId);
+      if (otherPage) {
+        figma.currentPage = otherPage;
+      }
+    }
+    page.remove();
+    figma.notify(`\u2705 Deleted page "${pageName}"`);
+    return {
+      success: true,
+      message: `Page "${pageName}" deleted successfully`
+    };
+  }
+  __name(deletePage, "deletePage");
+  async function renamePage(params) {
+    const { pageId, name } = params;
+    if (!pageId) {
+      throw new Error(
+        "Missing pageId parameter\n\u{1F4A1} Tip: Use get_pages to get IDs of available pages."
+      );
+    }
+    if (!name) {
+      throw new Error(
+        "Missing name parameter\n\u{1F4A1} Tip: Provide a new name for the page."
+      );
+    }
+    const page = await figma.getNodeByIdAsync(pageId);
+    if (!page) {
+      throw new Error(
+        `Page not found: ${pageId}
+The page may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    if (page.type !== "PAGE") {
+      throw new Error(
+        `Node is not a page: ${pageId} (type: ${page.type})
+\u{1F4A1} Tip: Use get_pages to get valid page IDs.`
+      );
+    }
+    const oldName = page.name;
+    page.name = name;
+    figma.notify(`\u2705 Renamed page "${oldName}" to "${name}"`);
+    return {
+      id: page.id,
+      name: page.name,
+      type: page.type
+    };
+  }
+  __name(renamePage, "renamePage");
+  async function setPluginData(params) {
+    const { nodeId, key, value } = params;
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes."
+      );
+    }
+    if (!key) {
+      throw new Error(
+        'Missing key parameter\n\u{1F4A1} Tip: Provide a key name for the data (e.g., "customMetadata")'
+      );
+    }
+    if (!value) {
+      throw new Error(
+        "Missing value parameter\n\u{1F4A1} Tip: Provide a string value to store (JSON stringify objects if needed)"
+      );
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
+    }
+    node.setPluginData(key, value);
+    figma.notify(`\u2705 Set plugin data "${key}" on ${node.name}`);
+    return {
+      success: true,
+      nodeId: node.id,
+      key
+    };
+  }
+  __name(setPluginData, "setPluginData");
+  async function getPluginData(params) {
+    const { nodeId, key } = params;
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes."
+      );
+    }
+    if (!key) {
+      throw new Error(
+        'Missing key parameter\n\u{1F4A1} Tip: Provide a key name to retrieve (e.g., "customMetadata")'
+      );
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
+    }
+    const value = node.getPluginData(key);
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      key,
+      value
+    };
+  }
+  __name(getPluginData, "getPluginData");
+  async function getAllPluginData(params) {
+    const { nodeId } = params;
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes."
+      );
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
+    }
+    const keys = node.getPluginDataKeys();
+    const data = {};
+    for (const key of keys) {
+      data[key] = node.getPluginData(key);
+    }
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      data
+    };
+  }
+  __name(getAllPluginData, "getAllPluginData");
+  async function deletePluginData(params) {
+    const { nodeId, key } = params;
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes."
+      );
+    }
+    if (!key) {
+      throw new Error(
+        'Missing key parameter\n\u{1F4A1} Tip: Provide a key name to delete (e.g., "customMetadata")'
+      );
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
+    }
+    node.setPluginData(key, "");
+    figma.notify(`\u2705 Deleted plugin data "${key}" from ${node.name}`);
+    return {
+      success: true,
+      nodeId: node.id,
+      key
+    };
+  }
+  __name(deletePluginData, "deletePluginData");
 
   // src/figma-plugin/utils/helpers.ts
   function delay(ms) {
@@ -1423,7 +1676,17 @@ The node may have been deleted or the ID is invalid.
         if (bottomRightRadius !== void 0) cornerNode.bottomRightRadius = bottomRightRadius;
         if (bottomLeftRadius !== void 0) cornerNode.bottomLeftRadius = bottomLeftRadius;
       } else if ("cornerRadius" in cornerNode) {
-        cornerNode.cornerRadius = radius != null ? radius : 0;
+        const individualMax = Math.max(
+          topLeftRadius != null ? topLeftRadius : 0,
+          topRightRadius != null ? topRightRadius : 0,
+          bottomRightRadius != null ? bottomRightRadius : 0,
+          bottomLeftRadius != null ? bottomLeftRadius : 0
+        );
+        const finalRadius = radius != null ? radius : individualMax;
+        cornerNode.cornerRadius = finalRadius;
+        if (individualMax > 0 && radius === void 0) {
+          figma.notify(`\u26A0\uFE0F Node "${node.name}" doesn't support individual corners. Using max radius: ${finalRadius}`, { timeout: 3e3 });
+        }
       }
     } else if (radius !== void 0) {
       cornerNode.cornerRadius = radius;
@@ -2561,6 +2824,7 @@ The node may have been deleted or the ID is invalid.
       blendMode: "NORMAL"
     };
     blendNode.effects = [...existingEffects, newShadow];
+    provideVisualFeedback(node, `\u2705 Added drop shadow to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2878,6 +3142,199 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setConstraints, "setConstraints");
+  async function reorderNode(params) {
+    const { nodeId, index } = params || {};
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to reorder."
+      );
+    }
+    if (index === void 0) {
+      throw new Error(
+        "Missing index parameter\n\u{1F4A1} Tip: Provide the target index (0 = first, 1 = second, etc.)"
+      );
+    }
+    const node = await getNodeById(nodeId);
+    if (!node.parent) {
+      throw new Error(
+        `Node has no parent: ${nodeId}
+\u{1F4A1} Tip: Only nodes with a parent can be reordered.`
+      );
+    }
+    const parent = node.parent;
+    if (!("children" in parent)) {
+      throw new Error(
+        `Parent node does not support children: ${parent.id}
+\u{1F4A1} Tip: Node must be inside a frame, group, or page.`
+      );
+    }
+    const currentIndex = parent.children.indexOf(node);
+    const maxIndex = parent.children.length - 1;
+    if (index < 0 || index > maxIndex) {
+      throw new Error(
+        `Index out of bounds: ${index} (valid range: 0-${maxIndex})
+\u{1F4A1} Tip: Parent has ${parent.children.length} children.`
+      );
+    }
+    parent.insertChild(index, node);
+    provideVisualFeedback(node, `\u2705 Reordered: ${node.name} (index ${currentIndex} \u2192 ${index})`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id
+    };
+  }
+  __name(reorderNode, "reorderNode");
+  async function moveToFront(params) {
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to move."
+      );
+    }
+    const node = await getNodeById(nodeId);
+    if (!node.parent) {
+      throw new Error(
+        `Node has no parent: ${nodeId}
+\u{1F4A1} Tip: Only nodes with a parent can be moved.`
+      );
+    }
+    const parent = node.parent;
+    if (!("children" in parent)) {
+      throw new Error(
+        `Parent node does not support children: ${parent.id}
+\u{1F4A1} Tip: Node must be inside a frame, group, or page.`
+      );
+    }
+    const maxIndex = parent.children.length - 1;
+    parent.insertChild(maxIndex, node);
+    provideVisualFeedback(node, `\u2705 Moved to front: ${node.name}`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id
+    };
+  }
+  __name(moveToFront, "moveToFront");
+  async function moveToBack(params) {
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to move."
+      );
+    }
+    const node = await getNodeById(nodeId);
+    if (!node.parent) {
+      throw new Error(
+        `Node has no parent: ${nodeId}
+\u{1F4A1} Tip: Only nodes with a parent can be moved.`
+      );
+    }
+    const parent = node.parent;
+    if (!("children" in parent)) {
+      throw new Error(
+        `Parent node does not support children: ${parent.id}
+\u{1F4A1} Tip: Node must be inside a frame, group, or page.`
+      );
+    }
+    parent.insertChild(0, node);
+    provideVisualFeedback(node, `\u2705 Moved to back: ${node.name}`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id
+    };
+  }
+  __name(moveToBack, "moveToBack");
+  async function moveForward(params) {
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to move."
+      );
+    }
+    const node = await getNodeById(nodeId);
+    if (!node.parent) {
+      throw new Error(
+        `Node has no parent: ${nodeId}
+\u{1F4A1} Tip: Only nodes with a parent can be moved.`
+      );
+    }
+    const parent = node.parent;
+    if (!("children" in parent)) {
+      throw new Error(
+        `Parent node does not support children: ${parent.id}
+\u{1F4A1} Tip: Node must be inside a frame, group, or page.`
+      );
+    }
+    const currentIndex = parent.children.indexOf(node);
+    const maxIndex = parent.children.length - 1;
+    if (currentIndex === maxIndex) {
+      figma.notify(`Node "${node.name}" is already at the front`);
+      return {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        parentId: parent.id
+      };
+    }
+    const newIndex = currentIndex + 1;
+    parent.insertChild(newIndex, node);
+    provideVisualFeedback(node, `\u2705 Moved forward: ${node.name}`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id
+    };
+  }
+  __name(moveForward, "moveForward");
+  async function moveBackward(params) {
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to move."
+      );
+    }
+    const node = await getNodeById(nodeId);
+    if (!node.parent) {
+      throw new Error(
+        `Node has no parent: ${nodeId}
+' +
+      '\u{1F4A1} Tip: Only nodes with a parent can be moved.`
+      );
+    }
+    const parent = node.parent;
+    if (!("children" in parent)) {
+      throw new Error(
+        `Parent node does not support children: ${parent.id}
+\u{1F4A1} Tip: Node must be inside a frame, group, or page.`
+      );
+    }
+    const currentIndex = parent.children.indexOf(node);
+    if (currentIndex === 0) {
+      figma.notify(`Node "${node.name}" is already at the back`);
+      return {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        parentId: parent.id
+      };
+    }
+    const newIndex = currentIndex - 1;
+    parent.insertChild(newIndex, node);
+    provideVisualFeedback(node, `\u2705 Moved backward: ${node.name}`);
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      parentId: parent.id
+    };
+  }
+  __name(moveBackward, "moveBackward");
 
   // src/figma-plugin/handlers/grid-styles.ts
   function layoutGridInputToFigma(input) {
@@ -4052,6 +4509,128 @@ The node may have been deleted or the ID is invalid.
     }
   }
   __name(exportNodeAsImage, "exportNodeAsImage");
+  async function exportMultipleNodes(params) {
+    const { nodeIds, format = "PNG", scale = 1 } = params || {};
+    const commandId = generateCommandId();
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+      const errorMsg = "Missing or invalid nodeIds parameter";
+      sendProgressUpdate(commandId, "export_multiple_nodes", "error", 0, 0, 0, errorMsg, { error: errorMsg });
+      throw new Error(
+        'Missing or invalid nodeIds parameter\n\u{1F4A1} Tip: Provide an array of node IDs, e.g., ["123:456", "789:012"]'
+      );
+    }
+    sendProgressUpdate(
+      commandId,
+      "export_multiple_nodes",
+      "started",
+      0,
+      nodeIds.length,
+      0,
+      `Starting export of ${nodeIds.length} node(s) as ${format}`,
+      { totalNodes: nodeIds.length, format, scale }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 3;
+    const chunks = [];
+    for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+      chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "export_multiple_nodes",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        nodeIds.length,
+        successCount + failureCount,
+        `Exporting chunk ${chunkIndex + 1}/${chunks.length} (${successCount} successful, ${failureCount} failed)`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length, successCount, failureCount }
+      );
+      const chunkPromises = chunk.map(async (nodeId) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          if (!("exportAsync" in node)) {
+            return { success: false, nodeId, error: `Node does not support exporting: ${nodeId}` };
+          }
+          const exportNode = node;
+          const settings = {
+            format,
+            constraint: { type: "SCALE", value: scale }
+          };
+          const bytes = await exportNode.exportAsync(settings);
+          let mimeType;
+          switch (format) {
+            case "PNG":
+              mimeType = "image/png";
+              break;
+            case "JPG":
+              mimeType = "image/jpeg";
+              break;
+            case "SVG":
+              mimeType = "image/svg+xml";
+              break;
+            case "PDF":
+              mimeType = "application/pdf";
+              break;
+            default:
+              mimeType = "application/octet-stream";
+          }
+          const base64 = customBase64Encode(bytes);
+          const width = "width" in node ? node.width : 0;
+          const height = "height" in node ? node.height : 0;
+          const exportResult = {
+            nodeId,
+            format,
+            data: base64,
+            size: { width, height }
+          };
+          return { success: true, nodeId, export: exportResult };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(200);
+      }
+    }
+    const message = `Export complete: ${successCount} successful, ${failureCount} failed`;
+    figma.notify(`\u2705 ${message}`);
+    sendProgressUpdate(
+      commandId,
+      "export_multiple_nodes",
+      "completed",
+      100,
+      nodeIds.length,
+      successCount + failureCount,
+      message,
+      { totalNodes: nodeIds.length, nodesExported: successCount, nodesFailed: failureCount, results }
+    );
+    return {
+      success: successCount > 0,
+      nodesExported: successCount,
+      nodesFailed: failureCount,
+      totalNodes: nodeIds.length,
+      results,
+      completedInChunks: chunks.length,
+      commandId
+    };
+  }
+  __name(exportMultipleNodes, "exportMultipleNodes");
 
   // src/figma-plugin/handlers/index.ts
   async function handleCommand(command, params) {
@@ -4071,6 +4650,26 @@ The node may have been deleted or the ID is invalid.
         return await setFocus(params);
       case "set_selections":
         return await setSelections(params);
+      // Page Management
+      case "get_pages":
+        return await getPages();
+      case "create_page":
+        return await createPage(params);
+      case "switch_page":
+        return await switchPage(params);
+      case "delete_page":
+        return await deletePage(params);
+      case "rename_page":
+        return await renamePage(params);
+      // Plugin Data Persistence
+      case "set_plugin_data":
+        return await setPluginData(params);
+      case "get_plugin_data":
+        return await getPluginData(params);
+      case "get_all_plugin_data":
+        return await getAllPluginData(params);
+      case "delete_plugin_data":
+        return await deletePluginData(params);
       // Element Creation
       case "create_rectangle":
         return await createRectangle(params);
@@ -4203,6 +4802,17 @@ The node may have been deleted or the ID is invalid.
         return await deleteMultipleNodes(params);
       case "clone_node":
         return await cloneNode(params);
+      // Layer Reordering
+      case "reorder_node":
+        return await reorderNode(params);
+      case "move_to_front":
+        return await moveToFront(params);
+      case "move_to_back":
+        return await moveToBack(params);
+      case "move_forward":
+        return await moveForward(params);
+      case "move_backward":
+        return await moveBackward(params);
       // Auto Layout
       case "set_layout_mode":
         return await setLayoutMode(params);
@@ -4261,6 +4871,8 @@ The node may have been deleted or the ID is invalid.
       // Export
       case "export_node_as_image":
         return await exportNodeAsImage(params);
+      case "export_multiple_nodes":
+        return await exportMultipleNodes(params);
       default:
         throw new Error(`Unknown command: ${command}`);
     }

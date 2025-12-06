@@ -896,7 +896,22 @@
       // Copy channel name to clipboard
       copyChannelBtn.addEventListener("click", async () => {
         try {
-          // Use Figma's clipboard API via parent.postMessage
+          // Try to use the browser's Clipboard API directly in the UI context
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(state.channel);
+          } else {
+            // Fallback: Create a temporary textarea and use execCommand
+            const textarea = document.createElement("textarea");
+            textarea.value = state.channel;
+            textarea.style.position = "fixed";
+            textarea.style.left = "-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+          }
+          
+          // Notify the plugin (for logging purposes)
           parent.postMessage({
             pluginMessage: {
               type: "copy-to-clipboard",
@@ -915,6 +930,12 @@
           }, 2000);
         } catch (error) {
           console.error("Failed to copy:", error);
+          // Even if clipboard access fails, still show visual feedback
+          // and let user know they need to manually select/copy
+          copyChannelBtn.textContent = "Select & Copy";
+          setTimeout(() => {
+            copyChannelBtn.textContent = "Copy";
+          }, 2000);
         }
       });
       

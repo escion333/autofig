@@ -17,6 +17,17 @@ export type FigmaCommand =
   | 'get_nodes_info'
   | 'set_focus'
   | 'set_selections'
+  // Page Management
+  | 'get_pages'
+  | 'create_page'
+  | 'switch_page'
+  | 'delete_page'
+  | 'rename_page'
+  // Plugin Data Persistence
+  | 'set_plugin_data'
+  | 'get_plugin_data'
+  | 'get_all_plugin_data'
+  | 'delete_plugin_data'
   // Element Creation
   | 'create_rectangle'
   | 'create_frame'
@@ -89,6 +100,12 @@ export type FigmaCommand =
   | 'delete_node'
   | 'delete_multiple_nodes'
   | 'clone_node'
+  // Layer Reordering
+  | 'reorder_node'
+  | 'move_to_front'
+  | 'move_to_back'
+  | 'move_forward'
+  | 'move_backward'
   // Auto Layout
   | 'set_layout_mode'
   | 'set_padding'
@@ -121,6 +138,7 @@ export type FigmaCommand =
   | 'create_connections'
   // Export
   | 'export_node_as_image'
+  | 'export_multiple_nodes'
   // WebSocket Channel Management (MCP server only)
   | 'join';
 
@@ -137,6 +155,19 @@ export interface CommandParams {
   get_nodes_info: { nodeIds: string[] };
   set_focus: { nodeId: string };
   set_selections: { nodeIds: string[] };
+
+  // Page Management
+  get_pages: Record<string, never>;
+  create_page: { name: string };
+  switch_page: { pageId: string };
+  delete_page: { pageId: string };
+  rename_page: { pageId: string; name: string };
+
+  // Plugin Data Persistence
+  set_plugin_data: { nodeId: string; key: string; value: string };
+  get_plugin_data: { nodeId: string; key: string };
+  get_all_plugin_data: { nodeId: string };
+  delete_plugin_data: { nodeId: string; key: string };
 
   // Variables (Design Tokens)
   get_local_variable_collections: Record<string, never>;
@@ -492,6 +523,24 @@ export interface CommandParams {
     y?: number;
   };
 
+  // Layer Reordering
+  reorder_node: {
+    nodeId: string;
+    index: number;
+  };
+  move_to_front: {
+    nodeId: string;
+  };
+  move_to_back: {
+    nodeId: string;
+  };
+  move_forward: {
+    nodeId: string;
+  };
+  move_backward: {
+    nodeId: string;
+  };
+
   // Auto Layout
   set_layout_mode: {
     nodeId: string;
@@ -615,6 +664,11 @@ export interface CommandParams {
   // Export
   export_node_as_image: {
     nodeId: string;
+    format?: ExportFormat;
+    scale?: number;
+  };
+  export_multiple_nodes: {
+    nodeIds: string[];
     format?: ExportFormat;
     scale?: number;
   };

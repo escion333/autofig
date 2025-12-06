@@ -147,8 +147,20 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
       if (bottomRightRadius !== undefined) cornerNode.bottomRightRadius = bottomRightRadius;
       if (bottomLeftRadius !== undefined) cornerNode.bottomLeftRadius = bottomLeftRadius;
     } else if ('cornerRadius' in cornerNode) {
-      // Node only supports uniform corner radius
-      (cornerNode as RectangleNode).cornerRadius = radius ?? 0;
+      // Node only supports uniform corner radius - warn and use max of individual values or uniform radius
+      const individualMax = Math.max(
+        topLeftRadius ?? 0,
+        topRightRadius ?? 0,
+        bottomRightRadius ?? 0,
+        bottomLeftRadius ?? 0
+      );
+      const finalRadius = radius ?? individualMax;
+      (cornerNode as RectangleNode).cornerRadius = finalRadius;
+      
+      // Warn user that individual corners aren't supported
+      if (individualMax > 0 && radius === undefined) {
+        figma.notify(`⚠️ Node "${node.name}" doesn't support individual corners. Using max radius: ${finalRadius}`, { timeout: 3000 });
+      }
     }
   } else if (radius !== undefined) {
     // Set uniform corner radius

@@ -3,7 +3,8 @@
  */
 
 import { filterFigmaNode } from '../../shared/utils/node-filter';
-import type { CommandParams, DocumentInfoResult, SelectionResult } from '../../shared/types';
+import type { CommandParams, DocumentInfoResult, SelectionResult, NodeResult } from '../../shared/types';
+import { provideVisualFeedback } from '../utils/helpers';
 
 /**
  * Get information about the current Figma document
@@ -257,6 +258,352 @@ export async function setSelections(params: CommandParams['set_selections']) {
       name: node.name,
       type: node.type,
     })),
+  };
+}
+
+/**
+ * Get all pages in the document
+ */
+export async function getPages(): Promise<Array<{ id: string; name: string; childCount: number }>> {
+  const pages = figma.root.children;
+  
+  return pages.map((page) => ({
+    id: page.id,
+    name: page.name,
+    childCount: page.children.length,
+  }));
+}
+
+/**
+ * Create a new page in the document
+ */
+export async function createPage(params: CommandParams['create_page']): Promise<NodeResult> {
+  const { name } = params;
+  
+  if (!name) {
+    throw new Error(
+      'Missing name parameter\n' +
+      '💡 Tip: Provide a name for the new page, e.g., "Design System"'
+    );
+  }
+
+  const newPage = figma.createPage();
+  newPage.name = name;
+
+  // Switch to the new page
+  figma.currentPage = newPage;
+
+  figma.notify(`✅ Created page "${name}"`);
+
+  return {
+    id: newPage.id,
+    name: newPage.name,
+    type: newPage.type,
+  };
+}
+
+/**
+ * Switch to a different page
+ */
+export async function switchPage(params: CommandParams['switch_page']): Promise<NodeResult> {
+  const { pageId } = params;
+  
+  if (!pageId) {
+    throw new Error(
+      'Missing pageId parameter\n' +
+      '💡 Tip: Use get_pages to get IDs of available pages.'
+    );
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(
+      `Page not found: ${pageId}\n` +
+      `The page may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  if (page.type !== 'PAGE') {
+    throw new Error(
+      `Node is not a page: ${pageId} (type: ${page.type})\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  figma.currentPage = page as PageNode;
+  figma.notify(`✅ Switched to page "${page.name}"`);
+
+  return {
+    id: page.id,
+    name: page.name,
+    type: page.type,
+  };
+}
+
+/**
+ * Delete a page from the document
+ */
+export async function deletePage(params: CommandParams['delete_page']): Promise<{ success: boolean; message: string }> {
+  const { pageId } = params;
+  
+  if (!pageId) {
+    throw new Error(
+      'Missing pageId parameter\n' +
+      '💡 Tip: Use get_pages to get IDs of available pages.'
+    );
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(
+      `Page not found: ${pageId}\n` +
+      `The page may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  if (page.type !== 'PAGE') {
+    throw new Error(
+      `Node is not a page: ${pageId} (type: ${page.type})\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  // Check if this is the last page
+  if (figma.root.children.length === 1) {
+    throw new Error(
+      'Cannot delete the last page in the document.\n' +
+      '💡 Tip: Create a new page before deleting this one.'
+    );
+  }
+
+  const pageName = page.name;
+  
+  // If deleting current page, switch to another one first
+  if (figma.currentPage.id === pageId) {
+    const otherPage = figma.root.children.find((p) => p.id !== pageId);
+    if (otherPage) {
+      figma.currentPage = otherPage as PageNode;
+    }
+  }
+
+  page.remove();
+  figma.notify(`✅ Deleted page "${pageName}"`);
+
+  return {
+    success: true,
+    message: `Page "${pageName}" deleted successfully`,
+  };
+}
+
+/**
+ * Rename a page
+ */
+export async function renamePage(params: CommandParams['rename_page']): Promise<NodeResult> {
+  const { pageId, name } = params;
+  
+  if (!pageId) {
+    throw new Error(
+      'Missing pageId parameter\n' +
+      '💡 Tip: Use get_pages to get IDs of available pages.'
+    );
+  }
+
+  if (!name) {
+    throw new Error(
+      'Missing name parameter\n' +
+      '💡 Tip: Provide a new name for the page.'
+    );
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(
+      `Page not found: ${pageId}\n` +
+      `The page may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  if (page.type !== 'PAGE') {
+    throw new Error(
+      `Node is not a page: ${pageId} (type: ${page.type})\n` +
+      `💡 Tip: Use get_pages to get valid page IDs.`
+    );
+  }
+
+  const oldName = page.name;
+  page.name = name;
+  figma.notify(`✅ Renamed page "${oldName}" to "${name}"`);
+
+  return {
+    id: page.id,
+    name: page.name,
+    type: page.type,
+  };
+}
+
+/**
+ * Set plugin data on a node
+ */
+export async function setPluginData(params: CommandParams['set_plugin_data']): Promise<{ success: boolean; nodeId: string; key: string }> {
+  const { nodeId, key, value } = params;
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes.'
+    );
+  }
+
+  if (!key) {
+    throw new Error(
+      'Missing key parameter\n' +
+      '💡 Tip: Provide a key name for the data (e.g., "customMetadata")'
+    );
+  }
+
+  if (!value) {
+    throw new Error(
+      'Missing value parameter\n' +
+      '💡 Tip: Provide a string value to store (JSON stringify objects if needed)'
+    );
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
+  }
+
+  // setPluginData is available on all node types
+  node.setPluginData(key, value);
+  figma.notify(`✅ Set plugin data "${key}" on ${node.name}`);
+
+  return {
+    success: true,
+    nodeId: node.id,
+    key,
+  };
+}
+
+/**
+ * Get plugin data from a node
+ */
+export async function getPluginData(params: CommandParams['get_plugin_data']): Promise<{ nodeId: string; nodeName: string; key: string; value: string }> {
+  const { nodeId, key } = params;
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes.'
+    );
+  }
+
+  if (!key) {
+    throw new Error(
+      'Missing key parameter\n' +
+      '💡 Tip: Provide a key name to retrieve (e.g., "customMetadata")'
+    );
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
+  }
+
+  const value = node.getPluginData(key);
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    key,
+    value,
+  };
+}
+
+/**
+ * Get all plugin data keys from a node
+ */
+export async function getAllPluginData(params: CommandParams['get_all_plugin_data']): Promise<{ nodeId: string; nodeName: string; data: Record<string, string> }> {
+  const { nodeId } = params;
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes.'
+    );
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
+  }
+
+  // Get all plugin data keys
+  const keys = node.getPluginDataKeys();
+  const data: Record<string, string> = {};
+
+  for (const key of keys) {
+    data[key] = node.getPluginData(key);
+  }
+
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    data,
+  };
+}
+
+/**
+ * Delete plugin data from a node
+ */
+export async function deletePluginData(params: CommandParams['delete_plugin_data']): Promise<{ success: boolean; nodeId: string; key: string }> {
+  const { nodeId, key } = params;
+
+  if (!nodeId) {
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes.'
+    );
+  }
+
+  if (!key) {
+    throw new Error(
+      'Missing key parameter\n' +
+      '💡 Tip: Provide a key name to delete (e.g., "customMetadata")'
+    );
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
+  }
+
+  // Delete the plugin data by setting it to an empty string
+  node.setPluginData(key, '');
+  figma.notify(`✅ Deleted plugin data "${key}" from ${node.name}`);
+
+  return {
+    success: true,
+    nodeId: node.id,
+    key,
   };
 }
 
