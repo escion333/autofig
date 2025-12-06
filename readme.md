@@ -265,6 +265,16 @@ When working with the Figma MCP:
 - set a default connector with `set_default_connector`,
 - and generate connector lines with `create_connections` for clear visual flow mapping.
 
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [TODO.md](./TODO.md) | Prioritized improvement tasks for contributors |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Guide for AI agents and developers |
+| [ANALYSIS_REPORT.md](./ANALYSIS_REPORT.md) | Current architecture and feature status |
+| [PRD.md](./PRD.md) | Product requirements and specifications |
+| [docs/SETUP_GUIDE_FOR_AI_AGENTS.md](./docs/SETUP_GUIDE_FOR_AI_AGENTS.md) | Detailed setup guide with AI-friendly decision trees |
+
 ## License
 
 MIT

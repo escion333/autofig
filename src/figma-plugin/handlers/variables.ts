@@ -188,8 +188,8 @@ export async function createVariable(
     throw new Error(`Collection not found: ${collectionId}`);
   }
 
-  // Create the variable
-  const variable = figma.variables.createVariable(name, collectionId, resolvedType);
+  // Create the variable (pass the collection object, not the ID)
+  const variable = figma.variables.createVariable(name, collection, resolvedType);
 
   // Set initial value if provided
   if (value !== undefined) {

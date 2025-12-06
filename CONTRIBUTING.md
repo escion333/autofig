@@ -7,10 +7,11 @@ This guide provides quick-reference patterns for AI agents working on this codeb
 ## Quick Start Checklist
 
 Before making changes:
-- [ ] Read `PRD.md` for full context and requirements
-- [ ] Check `ANALYSIS_REPORT.md` for current state assessment
+- [ ] Check **TODO.md** for prioritized tasks and what to work on
+- [ ] Read `ANALYSIS_REPORT.md` for current state and architecture
+- [ ] Run `bun test` to ensure tests pass before changes
 - [ ] Understand the three-component architecture (MCP Server ↔ WebSocket ↔ Plugin)
-- [ ] Familiarize yourself with the TypeScript module structure
+- [ ] Reference `PRD.md` for detailed requirements if needed
 
 ---
 
@@ -385,23 +386,32 @@ frame.paddingTop = 16;
 frame.itemSpacing = 8;
 ```
 
-### Variables API (Not Yet Implemented)
+### Variables API (✅ Implemented - 9 tools)
 ```typescript
-// Get collections
-const collections = figma.variables.getLocalVariableCollections();
+// MCP tools available:
+// - get_local_variable_collections
+// - get_local_variables
+// - create_variable_collection
+// - create_variable
+// - set_variable_value
+// - delete_variable
+// - get_bound_variables
+// - bind_variable
+// - unbind_variable
 
-// Create variable
+// Example usage in handlers:
+const collections = await figma.variables.getLocalVariableCollectionsAsync();
+
 const variable = figma.variables.createVariable(
   'tokenName',
   collectionId,
   'COLOR'  // or 'FLOAT', 'STRING', 'BOOLEAN'
 );
 
-// Set value
 variable.setValueForMode(modeId, { r: 1, g: 0, b: 0, a: 1 });
 
 // Bind to node
-node.setBoundVariable('fills', 0, variable);
+node.setBoundVariable('fills', variable);
 ```
 
 ---
@@ -422,8 +432,9 @@ docs: update PRD with variables API specs
 ## Questions?
 
 Check these resources:
-1. `PRD.md` - Full requirements
-2. `ANALYSIS_REPORT.md` - Current state analysis
-3. [Figma Plugin API Docs](https://www.figma.com/plugin-docs/api/api-reference/)
-4. [MCP Specification](https://modelcontextprotocol.io/)
+1. **TODO.md** - Prioritized tasks for future work
+2. `ANALYSIS_REPORT.md` - Current state and architecture
+3. `PRD.md` - Full requirements and specifications
+4. [Figma Plugin API Docs](https://www.figma.com/plugin-docs/api/api-reference/)
+5. [MCP Specification](https://modelcontextprotocol.io/)
 
