@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, EffectStyleInfo, EffectInput, RGBA } from '../../shared/types';
-import { getNodeById, assertNodeCapability } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, provideVisualFeedback } from '../utils/helpers';
 
 // ============================================================================
 // Helper Functions
@@ -167,6 +167,9 @@ export async function createEffectStyle(
   // Convert and set effects
   style.effects = effects.map(effectInputToFigmaEffect);
 
+  // Provide visual feedback
+  figma.notify(`✅ Created effect style: ${name}`);
+
   return {
     id: style.id,
     name: style.name,
@@ -221,6 +224,9 @@ export async function applyEffectStyle(
   // Apply the style
   (node as BlendMixin).effectStyleId = style.id;
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Applied effect style "${style.name}" to ${node.name}`);
+
   return {
     success: true,
     nodeId: node.id,
@@ -262,6 +268,9 @@ export async function deleteEffectStyle(
   // Remove the style
   style.remove();
 
+  // Provide visual feedback
+  figma.notify(`✅ Deleted effect style: ${styleName}`);
+
   return {
     success: true,
     styleId,
@@ -299,6 +308,9 @@ export async function setEffects(
 
   // Convert and set effects
   (node as BlendMixin).effects = effects.map(effectInputToFigmaEffect);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Set ${effects.length} effect(s) on ${node.name}`);
 
   return {
     success: true,
@@ -404,6 +416,9 @@ export async function addInnerShadow(
 
   blendNode.effects = [...existingEffects, newShadow];
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Added inner shadow to ${node.name}`);
+
   return {
     success: true,
     nodeId: node.id,
@@ -447,6 +462,9 @@ export async function addLayerBlur(
 
   blendNode.effects = [...existingEffects, newBlur] as Effect[];
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Added layer blur (${radius}px) to ${node.name}`);
+
   return {
     success: true,
     nodeId: node.id,
@@ -489,6 +507,9 @@ export async function addBackgroundBlur(
   };
 
   blendNode.effects = [...existingEffects, newBlur] as Effect[];
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Added background blur (${radius}px) to ${node.name}`);
 
   return {
     success: true,

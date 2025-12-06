@@ -510,6 +510,8 @@ The node may have been deleted or the ID is invalid.
         await figma.loadFontAsync(textNode.fontName);
       }
       await setCharacters(textNode, text);
+      const preview = text.length > 30 ? text.substring(0, 30) + "..." : text;
+      provideVisualFeedback(textNode, `\u2705 Updated text: "${preview}"`);
       return {
         id: node.id,
         name: node.name,
@@ -677,6 +679,8 @@ The node may have been deleted or the ID is invalid.
       `Text update complete: ${successCount} successful, ${failureCount} failed`,
       { results }
     );
+    const message = `\u2705 Updated ${successCount} text nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
     return {
       success: successCount > 0,
       successCount,
@@ -2162,6 +2166,7 @@ The node may have been deleted or the ID is invalid.
       opacity: (_d = color.a) != null ? _d : 1
     };
     style.paints = [paint];
+    figma.notify(`\u2705 Created paint style: ${name}`);
     return {
       id: style.id,
       name: style.name,
@@ -2219,6 +2224,7 @@ The node may have been deleted or the ID is invalid.
         a: (_e = currentPaint.opacity) != null ? _e : 1
       };
     }
+    figma.notify(`\u2705 Updated paint style: ${style.name}`);
     return result;
   }
   __name(updatePaintStyle, "updatePaintStyle");
@@ -2251,6 +2257,7 @@ The node may have been deleted or the ID is invalid.
       assertNodeCapability(node, "strokeStyleId", `Node "${node.name}" does not support stroke styles`);
       node.strokeStyleId = style.id;
     }
+    provideVisualFeedback(node, `\u2705 Applied paint style "${style.name}" to ${node.name} (${property})`);
     return {
       success: true,
       nodeId: node.id,
@@ -2275,6 +2282,7 @@ The node may have been deleted or the ID is invalid.
     }
     const styleName = style.name;
     style.remove();
+    figma.notify(`\u2705 Deleted paint style: ${styleName}`);
     return {
       success: true,
       styleId,
@@ -2320,6 +2328,7 @@ The node may have been deleted or the ID is invalid.
       gradientTransform: gradientType === "LINEAR" ? gradientTransform : [[1, 0, 0], [0, 1, 0]]
     };
     node.fills = [gradientPaint];
+    provideVisualFeedback(node, `\u2705 Set ${gradientType.toLowerCase()} gradient on ${node.name} (${stops.length} stops)`);
     return {
       success: true,
       nodeId: node.id,
@@ -2439,6 +2448,7 @@ The node may have been deleted or the ID is invalid.
     const style = figma.createEffectStyle();
     style.name = name;
     style.effects = effects.map(effectInputToFigmaEffect);
+    figma.notify(`\u2705 Created effect style: ${name}`);
     return {
       id: style.id,
       name: style.name,
@@ -2471,6 +2481,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "effectStyleId", `Node "${node.name}" does not support effect styles`);
     node.effectStyleId = style.id;
+    provideVisualFeedback(node, `\u2705 Applied effect style "${style.name}" to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2494,6 +2505,7 @@ The node may have been deleted or the ID is invalid.
     }
     const styleName = style.name;
     style.remove();
+    figma.notify(`\u2705 Deleted effect style: ${styleName}`);
     return {
       success: true,
       styleId,
@@ -2512,6 +2524,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "effects", `Node "${node.name}" does not support effects`);
     node.effects = effects.map(effectInputToFigmaEffect);
+    provideVisualFeedback(node, `\u2705 Set ${effects.length} effect(s) on ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2584,6 +2597,7 @@ The node may have been deleted or the ID is invalid.
       blendMode: "NORMAL"
     };
     blendNode.effects = [...existingEffects, newShadow];
+    provideVisualFeedback(node, `\u2705 Added inner shadow to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2610,6 +2624,7 @@ The node may have been deleted or the ID is invalid.
       visible
     };
     blendNode.effects = [...existingEffects, newBlur];
+    provideVisualFeedback(node, `\u2705 Added layer blur (${radius}px) to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2636,6 +2651,7 @@ The node may have been deleted or the ID is invalid.
       visible
     };
     blendNode.effects = [...existingEffects, newBlur];
+    provideVisualFeedback(node, `\u2705 Added background blur (${radius}px) to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2939,6 +2955,7 @@ The node may have been deleted or the ID is invalid.
     const style = figma.createGridStyle();
     style.name = name;
     style.layoutGrids = grids.map(layoutGridInputToFigma);
+    figma.notify(`\u2705 Created grid style: ${name}`);
     return {
       id: style.id,
       name: style.name,
@@ -2971,6 +2988,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "gridStyleId", `Node "${node.name}" does not support grid styles (must be a frame)`);
     node.gridStyleId = style.id;
+    provideVisualFeedback(node, `\u2705 Applied grid style "${style.name}" to ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -2994,6 +3012,7 @@ The node may have been deleted or the ID is invalid.
     }
     const styleName = style.name;
     style.remove();
+    figma.notify(`\u2705 Deleted grid style: ${styleName}`);
     return {
       success: true,
       styleId,
@@ -3012,6 +3031,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "layoutGrids", `Node "${node.name}" does not support layout grids (must be a frame)`);
     node.layoutGrids = grids.map(layoutGridInputToFigma);
+    provideVisualFeedback(node, `\u2705 Set ${grids.length} layout grid(s) on ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -3550,9 +3570,12 @@ The node may have been deleted or the ID is invalid.
       };
     }
     if (overrides && overrides.length > 0) {
-      return { success: false, message: "Direct override application not yet implemented" };
+      return {
+        success: false,
+        message: "Direct override application is not supported. Please provide a sourceInstanceId to copy overrides from an existing instance."
+      };
     }
-    return { success: false, message: "No source instance ID or overrides provided" };
+    return { success: false, message: "No source instance ID provided. Please specify a sourceInstanceId to copy overrides from." };
   }
   __name(setInstanceOverrides, "setInstanceOverrides");
 
@@ -4014,14 +4037,15 @@ The node may have been deleted or the ID is invalid.
           mimeType = "application/octet-stream";
       }
       const base64 = customBase64Encode(bytes);
+      const width = "width" in node ? node.width : 0;
+      const height = "height" in node ? node.height : 0;
+      const sizeKB = Math.round(bytes.length / 1024);
+      provideVisualFeedback(node, `\u2705 Exported ${node.name} as ${format} (${width}\xD7${height}, ${sizeKB}KB)`);
       return {
         nodeId,
         format,
         data: base64,
-        size: {
-          width: "width" in node ? node.width : 0,
-          height: "height" in node ? node.height : 0
-        }
+        size: { width, height }
       };
     } catch (error) {
       throw new Error(`Error exporting node as image: ${error.message}`);

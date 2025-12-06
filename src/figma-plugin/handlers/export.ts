@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, ExportResult, ExportFormat } from '../../shared/types';
-import { getNodeById, assertNodeCapability, customBase64Encode } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, customBase64Encode, provideVisualFeedback } from '../utils/helpers';
 
 /**
  * Export a node as an image
@@ -50,14 +50,17 @@ export async function exportNodeAsImage(params: CommandParams['export_node_as_im
     // Convert to base64
     const base64 = customBase64Encode(bytes);
 
+    // Provide visual feedback
+    const width = 'width' in node ? (node as SceneNode & { width: number }).width : 0;
+    const height = 'height' in node ? (node as SceneNode & { height: number }).height : 0;
+    const sizeKB = Math.round(bytes.length / 1024);
+    provideVisualFeedback(node, `✅ Exported ${node.name} as ${format} (${width}×${height}, ${sizeKB}KB)`);
+
     return {
       nodeId,
       format,
       data: base64,
-      size: {
-        width: 'width' in node ? (node as SceneNode & { width: number }).width : 0,
-        height: 'height' in node ? (node as SceneNode & { height: number }).height : 0,
-      },
+      size: { width, height },
     };
   } catch (error) {
     throw new Error(`Error exporting node as image: ${(error as Error).message}`);

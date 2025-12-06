@@ -508,12 +508,16 @@ export async function setInstanceOverrides(params: CommandParams['set_instance_o
     };
   }
 
-  // If overrides array is provided directly, apply them
+  // If overrides array is provided directly without a source instance, this isn't supported
+  // because override IDs are specific to the source instance and cannot be meaningfully
+  // applied to target instances without that context.
   if (overrides && overrides.length > 0) {
-    // TODO: Implement direct override application
-    return { success: false, message: 'Direct override application not yet implemented' };
+    return {
+      success: false,
+      message: 'Direct override application is not supported. Please provide a sourceInstanceId to copy overrides from an existing instance.',
+    };
   }
 
-  return { success: false, message: 'No source instance ID or overrides provided' };
+  return { success: false, message: 'No source instance ID provided. Please specify a sourceInstanceId to copy overrides from.' };
 }
 

@@ -7,12 +7,12 @@ import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import type { FigmaCommand } from "../shared/types";
 import { rgbaToHex } from "../shared/utils/color.js";
-import { filterFigmaNode } from "../shared/utils/node-filter.js";
+import { filterFigmaNode, type RawFigmaNode } from "../shared/utils/node-filter.js";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
   id: string;
-  result?: any;
+  result?: unknown; // Result can be any valid JSON value from Figma plugin
   error?: string;
 }
 
@@ -29,9 +29,22 @@ interface CommandProgressUpdate {
   totalChunks?: number;
   chunkSize?: number;
   message: string;
-  payload?: any;
+  payload?: unknown; // Payload can be any valid JSON value
   timestamp: number;
 }
+
+/**
+ * Note on type safety in tool handlers:
+ * 
+ * Handler functions use `:any` for destructured parameters because the MCP SDK
+ * doesn't automatically infer types from Zod schemas. This is acceptable because:
+ * 
+ * 1. Runtime validation: All inputs are validated by Zod schemas before reaching handlers
+ * 2. Type inference limitations: The MCP SDK's tool() method doesn't propagate schema types
+ * 3. Risk/benefit tradeoff: Manual typing of 70+ handlers vs marginal TypeScript benefit
+ * 
+ * Future improvement: Consider using z.infer<typeof schema> if MCP SDK adds better type support.
+ */
 
 // Update the getInstanceOverridesResult interface to match the plugin implementation
 interface getInstanceOverridesResult {
@@ -231,7 +244,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(filterFigmaNode(result as any))
+            text: JSON.stringify(filterFigmaNode(result as RawFigmaNode))
           }
         ]
       };
@@ -268,7 +281,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info as any)))
+            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info as RawFigmaNode)))
           }
         ]
       };
@@ -1746,7 +1759,7 @@ server.tool(
         x,
         y,
       });
-      const typedResult = result as any;
+      const typedResult = result as getInstanceOverridesResult;
       return {
         content: [
           {
@@ -4694,13 +4707,13 @@ function sendCommandToFigma(
       id,
       type: command === "join" ? "join" : "message",
       ...(command === "join"
-        ? { channel: (params as any).channel }
+        ? { channel: (params as Record<string, unknown>).channel }
         : { channel: currentChannel }),
       message: {
         id,
         command,
         params: {
-          ...(params as any),
+          ...(params as Record<string, unknown>),
           commandId: id, // Include the command ID in params
         },
       },

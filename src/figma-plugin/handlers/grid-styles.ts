@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, GridStyleInfo, LayoutGridInput, RGBA } from '../../shared/types';
-import { getNodeById, assertNodeCapability } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, provideVisualFeedback } from '../utils/helpers';
 
 // ============================================================================
 // Helper Functions
@@ -121,6 +121,9 @@ export async function createGridStyle(
   // Convert and set grids
   style.layoutGrids = grids.map(layoutGridInputToFigma);
 
+  // Provide visual feedback
+  figma.notify(`✅ Created grid style: ${name}`);
+
   return {
     id: style.id,
     name: style.name,
@@ -175,6 +178,9 @@ export async function applyGridStyle(
   // Apply the style
   (node as FrameNode).gridStyleId = style.id;
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Applied grid style "${style.name}" to ${node.name}`);
+
   return {
     success: true,
     nodeId: node.id,
@@ -216,6 +222,9 @@ export async function deleteGridStyle(
   // Remove the style
   style.remove();
 
+  // Provide visual feedback
+  figma.notify(`✅ Deleted grid style: ${styleName}`);
+
   return {
     success: true,
     styleId,
@@ -253,6 +262,9 @@ export async function setLayoutGrids(
 
   // Convert and set grids
   (node as FrameNode).layoutGrids = grids.map(layoutGridInputToFigma);
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Set ${grids.length} layout grid(s) on ${node.name}`);
 
   return {
     success: true,

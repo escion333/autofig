@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, TextNodeInfo } from '../../shared/types';
-import { getNodeById, uniqBy, delay } from '../utils/helpers';
+import { getNodeById, uniqBy, delay, provideVisualFeedback } from '../utils/helpers';
 import { sendProgressUpdate, generateCommandId } from '../utils/progress';
 
 /**
@@ -96,6 +96,10 @@ export async function setTextContent(params: CommandParams['set_text_content']) 
       await figma.loadFontAsync(textNode.fontName as FontName);
     }
     await setCharacters(textNode, text);
+
+    // Provide visual feedback
+    const preview = text.length > 30 ? text.substring(0, 30) + '...' : text;
+    provideVisualFeedback(textNode, `✅ Updated text: "${preview}"`);
 
     return {
       id: node.id,
@@ -310,6 +314,10 @@ export async function setMultipleTextContents(params: CommandParams['set_multipl
     `Text update complete: ${successCount} successful, ${failureCount} failed`,
     { results }
   );
+
+  // Provide visual feedback (no selection since it's multiple nodes)
+  const message = `✅ Updated ${successCount} text nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : '');
+  figma.notify(message);
 
   return {
     success: successCount > 0,

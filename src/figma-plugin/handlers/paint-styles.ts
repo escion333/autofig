@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, PaintStyleInfo } from '../../shared/types';
-import { getNodeById, assertNodeCapability } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, provideVisualFeedback } from '../utils/helpers';
 
 // ============================================================================
 // Paint Style CRUD Operations
@@ -88,6 +88,9 @@ export async function createPaintStyle(
 
   style.paints = [paint];
 
+  // Provide visual feedback
+  figma.notify(`✅ Created paint style: ${name}`);
+
   return {
     id: style.id,
     name: style.name,
@@ -163,6 +166,9 @@ export async function updatePaintStyle(
     };
   }
 
+  // Provide visual feedback
+  figma.notify(`✅ Updated paint style: ${style.name}`);
+
   return result;
 }
 
@@ -218,6 +224,9 @@ export async function applyPaintStyle(
     (node as GeometryMixin).strokeStyleId = style.id;
   }
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Applied paint style "${style.name}" to ${node.name} (${property})`);
+
   return {
     success: true,
     nodeId: node.id,
@@ -259,6 +268,9 @@ export async function deletePaintStyle(
 
   // Remove the style
   style.remove();
+
+  // Provide visual feedback
+  figma.notify(`✅ Deleted paint style: ${styleName}`);
 
   return {
     success: true,
@@ -336,6 +348,9 @@ export async function setGradientFill(
   };
 
   (node as GeometryMixin).fills = [gradientPaint];
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Set ${gradientType.toLowerCase()} gradient on ${node.name} (${stops.length} stops)`);
 
   return {
     success: true,

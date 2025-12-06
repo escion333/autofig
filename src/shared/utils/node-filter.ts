@@ -13,7 +13,7 @@ type StrokeElement = NonNullable<FilteredNode['strokes']>[number];
 /**
  * Interface for raw Figma node data from exportAsync
  */
-interface RawFigmaNode {
+export interface RawFigmaNode {
   id: string;
   name: string;
   type: NodeType;

@@ -191,6 +191,7 @@ const figmaMock = {
     selection: [],
     appendChild: vi.fn(),
     children: [],
+    findAllAsync: vi.fn().mockResolvedValue([]),
   },
   getNodeByIdAsync: vi.fn(),
   notify: vi.fn(),
