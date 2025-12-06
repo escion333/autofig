@@ -6,6 +6,8 @@ import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import type { FigmaCommand } from "../shared/types";
+import { rgbaToHex } from "../shared/utils/color.js";
+import { filterFigmaNode } from "../shared/utils/node-filter.js";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -229,7 +231,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(filterFigmaNode(result))
+            text: JSON.stringify(filterFigmaNode(result as any))
           }
         ]
       };
@@ -246,109 +248,6 @@ server.tool(
     }
   }
 );
-
-function rgbaToHex(color: any): string {
-  // skip if color is already hex
-  if (typeof color === 'string' && color.startsWith('#')) {
-    return color;
-  }
-
-  const r = Math.round(color.r * 255);
-  const g = Math.round(color.g * 255);
-  const b = Math.round(color.b * 255);
-  const a = Math.round(color.a * 255);
-
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a === 255 ? '' : a.toString(16).padStart(2, '0')}`;
-}
-
-function filterFigmaNode(node: any) {
-  // Skip VECTOR type nodes
-  if (node.type === "VECTOR") {
-    return null;
-  }
-
-  const filtered: any = {
-    id: node.id,
-    name: node.name,
-    type: node.type,
-  };
-
-  if (node.fills && node.fills.length > 0) {
-    filtered.fills = node.fills.map((fill: any) => {
-      const processedFill = { ...fill };
-
-      // Remove boundVariables and imageRef
-      delete processedFill.boundVariables;
-      delete processedFill.imageRef;
-
-      // Process gradientStops if present
-      if (processedFill.gradientStops) {
-        processedFill.gradientStops = processedFill.gradientStops.map((stop: any) => {
-          const processedStop = { ...stop };
-          // Convert color to hex if present
-          if (processedStop.color) {
-            processedStop.color = rgbaToHex(processedStop.color);
-          }
-          // Remove boundVariables
-          delete processedStop.boundVariables;
-          return processedStop;
-        });
-      }
-
-      // Convert solid fill colors to hex
-      if (processedFill.color) {
-        processedFill.color = rgbaToHex(processedFill.color);
-      }
-
-      return processedFill;
-    });
-  }
-
-  if (node.strokes && node.strokes.length > 0) {
-    filtered.strokes = node.strokes.map((stroke: any) => {
-      const processedStroke = { ...stroke };
-      // Remove boundVariables
-      delete processedStroke.boundVariables;
-      // Convert color to hex if present
-      if (processedStroke.color) {
-        processedStroke.color = rgbaToHex(processedStroke.color);
-      }
-      return processedStroke;
-    });
-  }
-
-  if (node.cornerRadius !== undefined) {
-    filtered.cornerRadius = node.cornerRadius;
-  }
-
-  if (node.absoluteBoundingBox) {
-    filtered.absoluteBoundingBox = node.absoluteBoundingBox;
-  }
-
-  if (node.characters) {
-    filtered.characters = node.characters;
-  }
-
-  if (node.style) {
-    filtered.style = {
-      fontFamily: node.style.fontFamily,
-      fontStyle: node.style.fontStyle,
-      fontWeight: node.style.fontWeight,
-      fontSize: node.style.fontSize,
-      textAlignHorizontal: node.style.textAlignHorizontal,
-      letterSpacing: node.style.letterSpacing,
-      lineHeightPx: node.style.lineHeightPx
-    };
-  }
-
-  if (node.children) {
-    filtered.children = node.children
-      .map((child: any) => filterFigmaNode(child))
-      .filter((child: any) => child !== null); // Remove null children (VECTOR nodes)
-  }
-
-  return filtered;
-}
 
 // Nodes Info Tool
 server.tool(
@@ -369,7 +268,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
+            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info as any)))
           }
         ]
       };
@@ -648,7 +547,7 @@ server.tool(
 // Create Ellipse Tool
 server.tool(
   "create_ellipse",
-  "Create a new ellipse (circle or oval) in Figma",
+  "Create a new ellipse (circle or oval) shape with optional fill and stroke. Set width=height for perfect circle. Auto-selects and scrolls to new node. Returns: {id, name, x, y, width, height}. Example: create_ellipse(x=100, y=100, width=80, height=80, fillColor={r:0.2,g:0.6,b:1})",
   {
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
@@ -769,7 +668,7 @@ server.tool(
 // Set Stroke Color Tool
 server.tool(
   "set_stroke_color",
-  "Set the stroke color of a node in Figma",
+  "Set the stroke (border) color and weight of a node. Works on shapes and frames. Auto-selects and scrolls to node. Returns: {id, name, strokes}. Example: set_stroke_color(nodeId='123:1', r=0, g=0, b=0, weight=2) for black 2px border. Related: set_fill_color",
   {
     nodeId: z.string().describe("The ID of the node to modify"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -847,7 +746,7 @@ server.tool(
 // Clone Node Tool
 server.tool(
   "clone_node",
-  "Clone an existing node in Figma",
+  "Create a duplicate copy of an existing node at a new position. Optionally specify x, y coordinates. Auto-selects and scrolls to clone. Returns: {id, name, x, y}. Example: clone_node(nodeId='123:1', x=250, y=100). Use for creating variations or repeated elements.",
   {
     nodeId: z.string().describe("The ID of the node to clone"),
     x: z.number().optional().describe("New X position for the clone"),
@@ -920,7 +819,7 @@ server.tool(
 // Delete Node Tool
 server.tool(
   "delete_node",
-  "Delete a node from Figma",
+  "Permanently remove a single node from the document. Cannot be undone via API. Shows notification with deleted node name. Returns: {success, nodeId, nodeName}. Example: delete_node(nodeId='123:1'). Related: delete_multiple_nodes for batch deletion.",
   {
     nodeId: z.string().describe("The ID of the node to delete"),
   },
@@ -952,7 +851,7 @@ server.tool(
 // Delete Multiple Nodes Tool
 server.tool(
   "delete_multiple_nodes",
-  "Delete multiple nodes from Figma at once",
+  "Permanently remove multiple nodes in a single operation. More efficient than individual deletions. Returns: {success, deletedCount, results}. Example: delete_multiple_nodes(nodeIds=['123:1', '123:2', '123:3']). Use for bulk cleanup operations.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
   },
@@ -984,7 +883,7 @@ server.tool(
 // Export Node as Image Tool
 server.tool(
   "export_node_as_image",
-  "Export a node as an image from Figma",
+  "Export a node as PNG, JPG, SVG, or PDF with optional scaling. Returns base64-encoded image data and dimensions. Auto-selects node and shows file size. Example: export_node_as_image(nodeId='123:1', format='PNG', scale=2). Use for generating assets or previews.",
   {
     nodeId: z.string().describe("The ID of the node to export"),
     format: z
@@ -1028,7 +927,7 @@ server.tool(
 // Set Text Content Tool
 server.tool(
   "set_text_content",
-  "Set the text content of an existing text node in Figma",
+  "Update the text content of a single text node. Preserves font styling. Auto-selects and shows preview. Returns: {id, name, characters, fontName}. Example: set_text_content(nodeId='123:1', text='Updated text'). Related: set_multiple_text_contents for batch updates.",
   {
     nodeId: z.string().describe("The ID of the text node to modify"),
     text: z.string().describe("New text content"),
@@ -1069,7 +968,7 @@ server.tool(
 // Get Local Variable Collections Tool
 server.tool(
   "get_local_variable_collections",
-  "Get all local variable collections from the Figma document. Variable collections contain design tokens (colors, numbers, strings, booleans) organized by modes (e.g., light/dark themes). Returns collection IDs, names, modes, and variable IDs.",
+  "Get all local variable collections from the Figma document. Collections organize design tokens by type/purpose with multi-mode support (light/dark, mobile/desktop, etc.). Returns: {count, collections: Array<{id, name, modes, variableIds}>}. Example: Use to discover collections before creating variables. Related: create_variable_collection, get_local_variables",
   {},
   async () => {
     try {
@@ -1098,7 +997,7 @@ server.tool(
 // Get Local Variables Tool
 server.tool(
   "get_local_variables",
-  "Get all local variables (design tokens) from the Figma document. Variables can be COLOR, FLOAT, STRING, or BOOLEAN types. Optionally filter by collection ID. Returns variable details including values for each mode.",
+  "Get all local variables (design tokens) from the document, optionally filtered by collection. Variables can be COLOR, FLOAT, STRING, or BOOLEAN types. Returns: {count, variables: Array<{id, name, resolvedType, variableCollectionId, valuesByMode}>}. Example: get_local_variables(collectionId='123:45'). Related: get_local_variable_collections, create_variable",
   {
     collectionId: z.string().optional().describe("Optional collection ID to filter variables by a specific collection"),
   },
@@ -1129,7 +1028,7 @@ server.tool(
 // Create Variable Collection Tool
 server.tool(
   "create_variable_collection",
-  "Create a new variable collection for organizing design tokens. Collections group related variables (colors, spacing, etc.) and can have multiple modes (e.g., light/dark themes).",
+  "Create a new variable collection to organize design tokens by theme or category. Define multiple modes upfront for theme switching (light/dark, etc.). Returns: {id, name, modes: Array<{modeId, name}>, variableIds}. Example: create_variable_collection(name='Colors', modes=['Light', 'Dark']). Related: create_variable, get_local_variable_collections",
   {
     name: z.string().describe("Name of the collection (e.g., 'Colors', 'Spacing', 'Typography')"),
     modes: z.array(z.string()).optional().describe("Optional array of mode names (e.g., ['Light', 'Dark']). Defaults to a single 'Mode 1' if not provided."),
@@ -1161,7 +1060,7 @@ server.tool(
 // Create Variable Tool
 server.tool(
   "create_variable",
-  "Create a new variable (design token) in a collection. Variables can be colors, numbers, strings, or booleans. Use get_local_variable_collections first to get the collection ID.",
+  "Create a new variable (design token) within a collection. Supports COLOR (rgba), FLOAT (numbers), STRING (text), BOOLEAN (true/false). Optional initial value for default mode. Returns: {id, name, resolvedType, variableCollectionId}. Example: create_variable(collectionId='123:45', name='primary/500', resolvedType='COLOR', value={r:0.2,g:0.6,b:1}). Related: set_variable_value, bind_variable",
   {
     collectionId: z.string().describe("The ID of the collection to add the variable to"),
     name: z.string().describe("Name of the variable (e.g., 'primary/500', 'spacing/sm')"),
@@ -1205,7 +1104,7 @@ server.tool(
 // Set Variable Value Tool
 server.tool(
   "set_variable_value",
-  "Set or update a variable's value for a specific mode. Use this to set different values for light/dark themes or other modes.",
+  "Set or update a variable's value for a specific mode (e.g., different color in Light vs Dark mode). Value type must match variable's resolvedType. Returns: {success, variableId, modeId, value}. Example: set_variable_value(variableId='123:45', modeId='456:78', value={r:0.1,g:0.1,b:0.1}). Related: create_variable, get_local_variables",
   {
     variableId: z.string().describe("The ID of the variable to update"),
     modeId: z.string().describe("The mode ID to set the value for (get from collection's modes array)"),
@@ -1248,7 +1147,7 @@ server.tool(
 // Delete Variable Tool
 server.tool(
   "delete_variable",
-  "Delete a variable from its collection. This will remove all bindings to this variable.",
+  "Delete a variable from its collection permanently. All node bindings to this variable will be removed automatically. Returns: {success, variableId, variableName}. Example: delete_variable(variableId='123:45'). Related: create_variable, unbind_variable",
   {
     variableId: z.string().describe("The ID of the variable to delete"),
   },
@@ -1279,7 +1178,7 @@ server.tool(
 // Get Bound Variables Tool
 server.tool(
   "get_bound_variables",
-  "Get all variables bound to a node's properties. Shows which design tokens are applied to fills, strokes, corner radius, padding, etc.",
+  "Get all variable bindings for a node (which design tokens control its properties). Returns bound variables for fills, strokes, sizing, spacing, etc. Returns: {nodeId, bindings: {field: variableId}}. Example: get_bound_variables(nodeId='123:456'). Related: bind_variable, unbind_variable",
   {
     nodeId: z.string().describe("The ID of the node to check for bound variables"),
   },
@@ -1310,7 +1209,7 @@ server.tool(
 // Bind Variable Tool
 server.tool(
   "bind_variable",
-  "Bind a variable (design token) to a node's property. This applies the token value to the node and updates automatically when the token changes.",
+  "Bind a variable (design token) to a node's property for automatic updates when the token or mode changes. Supports fills, strokes, sizing, spacing, opacity, and more. Auto-selects node. Returns: {success, nodeId, field, variableId}. Example: bind_variable(nodeId='123:456', field='fills', variableId='789:012'). Related: get_bound_variables, unbind_variable",
   {
     nodeId: z.string().describe("The ID of the node to bind the variable to"),
     field: z.enum([
@@ -1349,7 +1248,7 @@ server.tool(
 // Unbind Variable Tool
 server.tool(
   "unbind_variable",
-  "Remove a variable binding from a node's property. The node will retain its current value but no longer update when the token changes.",
+  "Remove a variable binding from a node's property. Node retains current value as static (no longer updates with token/mode changes). Auto-selects node. Returns: {success, nodeId, field}. Example: unbind_variable(nodeId='123:456', field='fills'). Related: bind_variable, get_bound_variables",
   {
     nodeId: z.string().describe("The ID of the node to unbind the variable from"),
     field: z.enum([
@@ -1387,7 +1286,7 @@ server.tool(
 // Get Styles Tool
 server.tool(
   "get_styles",
-  "Get all styles from the current Figma document",
+  "Get all local styles (text, paint, effect, grid) from the document. Returns: {count, styles: Array<{id, name, type, key}>}. Use to discover available styles before applying them. Related: get_text_styles, get_paint_styles, get_effect_styles, get_grid_styles for filtered results.",
   {},
   async () => {
     try {
@@ -1417,7 +1316,7 @@ server.tool(
 // Get Local Components Tool
 server.tool(
   "get_local_components",
-  "Get all local components from the Figma document",
+  "Get all local components and component sets defined in the document. Returns: {count, components: Array<{id, name, key, type, description}>}. Use to discover available components before creating instances. Example: get_local_components() to list all reusable components.",
   {},
   async () => {
     try {
@@ -1451,7 +1350,7 @@ server.tool(
 // Create Component Tool
 server.tool(
   "create_component",
-  "Convert an existing node (frame, group, shape) into a reusable component. The component can then be instantiated multiple times and will update all instances when modified.",
+  "Convert an existing node (frame/group/shape) into a reusable component. All future instances update when main component changes. Auto-selects component. Returns: {id, name, key, type}. Example: create_component(nodeId='123:456', name='Button'). Related: create_component_instance, create_component_set",
   {
     nodeId: z.string().describe("The ID of the node to convert to a component (must be a FRAME, GROUP, or shape)"),
     name: z.string().optional().describe("Optional name for the component"),
@@ -1483,7 +1382,7 @@ server.tool(
 // Create Component Set Tool
 server.tool(
   "create_component_set",
-  "Combine multiple components into a component set (variant group). Components must have variant-compatible names (e.g., 'Button/Size=Small', 'Button/Size=Large'). Use this to create button variants, icon sets, etc.",
+  "Combine multiple components into a variant set (component with switchable states). Components need variant-compatible names like 'Button/Size=Small'. Perfect for button variants, icon families, state variations. Auto-selects set. Returns: {id, name, key, variantCount}. Example: create_component_set(componentIds=['123:1', '123:2']). Related: create_component, add_component_property",
   {
     componentIds: z.array(z.string()).describe("Array of component IDs to combine into a variant set (minimum 2)"),
     name: z.string().optional().describe("Optional name for the component set"),
@@ -1515,7 +1414,7 @@ server.tool(
 // Get Component Properties Tool
 server.tool(
   "get_component_properties",
-  "Get all properties defined on a component or component set. Returns property names, types, default values, and variant options.",
+  "Get all properties defined on a component/component set (BOOLEAN toggles, TEXT fields, INSTANCE_SWAP slots, VARIANT options). Returns: {componentId, properties: {name, type, defaultValue, variantOptions}}. Example: get_component_properties(componentId='123:456'). Related: add_component_property, set_component_property_value",
   {
     componentId: z.string().describe("The ID of the component or component set"),
   },
@@ -1546,7 +1445,7 @@ server.tool(
 // Add Component Property Tool
 server.tool(
   "add_component_property",
-  "Add a new property to a component or component set. Properties allow instances to be customized (e.g., toggle visibility, swap icons, change text).",
+  "Add a customizable property to a component/set for instance control. BOOLEAN for show/hide, TEXT for labels, INSTANCE_SWAP for icon slots, VARIANT for state switching. Returns: {success, componentId, propertyName, propertyType}. Example: add_component_property(componentId='123:456', propertyName='showIcon', propertyType='BOOLEAN', defaultValue=true). Related: set_component_property_value, get_component_properties",
   {
     componentId: z.string().describe("The ID of the component or component set"),
     propertyName: z.string().describe("Name of the property (e.g., 'showIcon', 'label', 'iconSlot')"),
@@ -1599,7 +1498,7 @@ server.tool(
 // Set Component Property Value Tool
 server.tool(
   "set_component_property_value",
-  "Set the value of a component property on an instance. Use this to customize instances (e.g., toggle icon visibility, change label text).",
+  "Set a property value on a component instance to customize it (toggle visibility, change text, swap icon, switch variant). Auto-selects instance. Returns: {success, instanceId, propertyName, value}. Example: set_component_property_value(instanceId='123:456', propertyName='showIcon', value=false). Related: add_component_property, get_component_properties",
   {
     instanceId: z.string().describe("The ID of the component instance"),
     propertyName: z.string().describe("Name of the property to set"),
@@ -1632,7 +1531,7 @@ server.tool(
 // Get Annotations Tool
 server.tool(
   "get_annotations",
-  "Get all annotations in the current document or specific node",
+  "Get Figma dev mode annotations from a node or entire document. Includes categories and labels. Returns: {annotations: Array<{id, label, nodeId}>, categories}. Example: get_annotations(nodeId='123:1', includeCategories=true). Use to read design specs and notes.",
   {
     nodeId: z.string().describe("node ID to get annotations for specific node"),
     includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
@@ -1667,7 +1566,7 @@ server.tool(
 // Set Annotation Tool
 server.tool(
   "set_annotation",
-  "Create or update an annotation",
+  "Create or update a dev mode annotation on a node. Supports markdown formatting. Returns: {success, annotationId}. Example: set_annotation(nodeId='123:1', labelMarkdown='**Primary button** - Use for main CTAs', categoryId='cat_1'). Use for design documentation.",
   {
     nodeId: z.string().describe("The ID of the node to annotate"),
     annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
@@ -1721,7 +1620,7 @@ interface SetMultipleAnnotationsParams {
 // Set Multiple Annotations Tool
 server.tool(
   "set_multiple_annotations",
-  "Set multiple annotations parallelly in a node",
+  "Batch create/update multiple annotations efficiently. More performant than individual calls. Returns: {success, count, results}. Example: set_multiple_annotations(nodeId='parent', annotations=[{nodeId:'123:1', labelMarkdown:'Button'}, {nodeId:'123:2', labelMarkdown:'Icon'}]). Use for bulk documentation.",
   {
     nodeId: z
       .string()
@@ -1834,7 +1733,7 @@ server.tool(
 // Create Component Instance Tool
 server.tool(
   "create_component_instance",
-  "Create an instance of a component in Figma",
+  "Create a new instance (copy) of a component at specified position. Component updates will reflect in all instances. Returns: {id, name, componentKey}. Example: create_component_instance(componentKey='abc123', x=100, y=100). Use get_local_components to find component keys.",
   {
     componentKey: z.string().describe("Key of the component to instantiate"),
     x: z.number().describe("X position"),
@@ -1873,7 +1772,7 @@ server.tool(
 // Copy Instance Overrides Tool
 server.tool(
   "get_instance_overrides",
-  "Get all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
+  "Capture all customizations (text, properties, styles) from a component instance for bulk application. Use with set_instance_overrides to clone instance configurations. Returns: {success, message, sourceInstanceId, mainComponentId, overridesCount}. Example: get_instance_overrides(nodeId='123:456'). Related: set_instance_overrides",
   {
     nodeId: z.string().optional().describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
   },
@@ -1910,7 +1809,7 @@ server.tool(
 // Set Instance Overrides Tool
 server.tool(
   "set_instance_overrides",
-  "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
+  "Apply captured instance customizations to multiple target instances in bulk (swaps them to source component and applies all overrides). Perfect for propagating design updates. Auto-selects targets. Returns: {success, totalCount, results: Array<{success, instanceId, appliedCount}>}. Example: set_instance_overrides(sourceInstanceId='123:456', targetNodeIds=['789:0', '789:1']). Related: get_instance_overrides",
   {
     sourceInstanceId: z.string().describe("ID of the source component instance"),
     targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
@@ -1960,7 +1859,7 @@ server.tool(
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
-  "Set the corner radius of a node in Figma",
+  "Set corner radius for rounded corners on shapes and frames. Optionally specify which corners to round. Auto-selects and shows radius value. Returns: {id, name, cornerRadius}. Example: set_corner_radius(nodeId='123:1', radius=12, corners=[true, true, false, false]) for top corners only.",
   {
     nodeId: z.string().describe("The ID of the node to modify"),
     radius: z.number().min(0).describe("Corner radius value"),
@@ -2005,7 +1904,7 @@ server.tool(
 // Set Opacity Tool
 server.tool(
   "set_opacity",
-  "Set the opacity of a node in Figma (0 = fully transparent, 1 = fully opaque)",
+  "Set the opacity/transparency of a node from 0 (invisible) to 1 (solid). Auto-selects and shows percentage. Returns: {id, name, opacity}. Example: set_opacity(nodeId='123:1', opacity=0.5) for 50% transparency. Use for fade effects or disabled states.",
   {
     nodeId: z.string().describe("The ID of the node to modify"),
     opacity: z.number().min(0).max(1).describe("Opacity value (0-1, where 0 is fully transparent and 1 is fully opaque)"),
@@ -2042,7 +1941,7 @@ server.tool(
 // Group Nodes Tool
 server.tool(
   "group_nodes",
-  "Group multiple nodes together in Figma. All nodes must have the same parent.",
+  "Combine multiple nodes into a group for organization. All nodes must share the same parent. Auto-selects group. Returns: {success, groupId, groupName, nodeCount}. Example: group_nodes(nodeIds=['123:1', '123:2', '123:3'], name='Icon Set'). Related: ungroup_node.",
   {
     nodeIds: z.array(z.string()).min(2).describe("Array of node IDs to group together (minimum 2 nodes)"),
     name: z.string().optional().describe("Optional name for the group (default: 'Group')"),
@@ -2079,7 +1978,7 @@ server.tool(
 // Ungroup Node Tool
 server.tool(
   "ungroup_node",
-  "Ungroup a group node in Figma, moving its children to the group's parent",
+  "Dissolve a group and move its children to the group's parent level. Group node is removed. Auto-selects children. Returns: {success, ungroupedCount, childIds}. Example: ungroup_node(nodeId='123:1'). Use to flatten hierarchy. Related: group_nodes.",
   {
     nodeId: z.string().describe("The ID of the group node to ungroup"),
   },
@@ -2118,7 +2017,7 @@ server.tool(
 // Get Available Fonts Tool
 server.tool(
   "get_available_fonts",
-  "Get a list of all available fonts in Figma. Use this to discover fonts before using them with create_text or set_text_properties.",
+  "Get all available fonts in Figma with their styles (Regular, Bold, Italic, etc.). Optional filter by family name. Returns: {fonts: Array<{family, styles}>}. Example: get_available_fonts(filter='Roboto'). Use before create_text or set_text_properties. Related: load_font, create_text",
   {
     filter: z.string().optional().describe("Optional filter to search fonts by family name (case-insensitive)"),
   },
@@ -2152,7 +2051,7 @@ server.tool(
 // Load Font Tool
 server.tool(
   "load_font",
-  "Load a font for use in the Figma document. Must be called before using a font with create_text or set_text_properties.",
+  "Load a font into memory for immediate use (required before using custom fonts in text operations). Loads specific family+style combination. Returns: {success, family, style}. Example: load_font(family='Roboto', style='Bold'). Call before create_text or set_text_properties. Related: get_available_fonts",
   {
     family: z.string().describe("The font family name (e.g., 'Roboto', 'Open Sans')"),
     style: z.string().optional().describe("The font style (e.g., 'Regular', 'Bold', 'Italic'). Default: 'Regular'"),
@@ -2188,7 +2087,7 @@ server.tool(
 // Get Text Styles Tool
 server.tool(
   "get_text_styles",
-  "Get all local text styles defined in the Figma document",
+  "Get all local text (typography) styles from the document. Returns: {count, styles: Array<{id, name, key, fontFamily, fontSize, fontWeight, lineHeight}>}. Use to discover available text styles before applying. Related: create_text_style, apply_text_style.",
   {},
   async () => {
     try {
@@ -2222,7 +2121,7 @@ server.tool(
 // Create Text Style Tool
 server.tool(
   "create_text_style",
-  "Create a new reusable text style in Figma. Text styles define typography properties that can be applied to multiple text nodes.",
+  "Create a reusable text/typography style with font, size, line height, etc. Returns: {id, name, fontFamily, fontSize}. Example: create_text_style(name='Heading 1', fontFamily='Inter', fontSize=32, fontWeight=700, lineHeight=40). Related: apply_text_style to use it.",
   {
     name: z.string().describe("Name for the text style (e.g., 'Heading 1', 'Body Text')"),
     fontFamily: z.string().optional().describe("Font family (default: 'Inter')"),
@@ -2272,7 +2171,7 @@ server.tool(
 // Apply Text Style Tool
 server.tool(
   "apply_text_style",
-  "Apply a text style to a text node. You can specify either the style ID or the style name.",
+  "Apply a predefined text style to a text node by ID or name. Auto-selects node. Returns: {success, nodeId, nodeName, styleId, styleName}. Example: apply_text_style(nodeId='123:1', styleName='Heading 1'). Related: get_text_styles to list available styles.",
   {
     nodeId: z.string().describe("The ID of the text node to style"),
     styleId: z.string().optional().describe("The ID of the text style to apply"),
@@ -2310,7 +2209,7 @@ server.tool(
 // Set Text Properties Tool
 server.tool(
   "set_text_properties",
-  "Set typography properties on a text node. Use this for fine-grained control over text appearance.",
+  "Directly set typography properties (font, size, line height, alignment, etc.) on a text node without using styles. Returns: {success, nodeId}. Example: set_text_properties(nodeId='123:1', fontSize=18, lineHeight=24, textAlignHorizontal='CENTER'). Related: apply_text_style for style-based approach.",
   {
     nodeId: z.string().describe("The ID of the text node to modify"),
     fontFamily: z.string().optional().describe("Font family (e.g., 'Roboto', 'Open Sans')"),
@@ -2368,7 +2267,7 @@ server.tool(
 // Get Paint Styles Tool
 server.tool(
   "get_paint_styles",
-  "Get all local paint (color) styles from the Figma document. Paint styles are reusable color definitions that can be applied to fills and strokes.",
+  "Get all local paint (color/gradient) styles from the document. Returns: {count, styles: Array<{id, name, type, color}>}. Use to discover available color styles before applying. Example: get_paint_styles() to list all reusable colors. Related: create_paint_style, apply_paint_style.",
   {},
   async () => {
     try {
@@ -2408,7 +2307,7 @@ server.tool(
 // Create Paint Style Tool
 server.tool(
   "create_paint_style",
-  "Create a new reusable paint (color) style in Figma. Paint styles define colors that can be applied to multiple nodes.",
+  "Create a reusable color style for fills and strokes. Shows notification on creation. Returns: {id, name, color}. Example: create_paint_style(name='Primary/500', color={r:0.2, g:0.5, b:1, a:1}). Use for design system colors. Related: apply_paint_style.",
   {
     name: z.string().describe("Name for the paint style (e.g., 'Primary/500', 'Background/Light')"),
     color: z.object({
@@ -2455,7 +2354,7 @@ server.tool(
 // Update Paint Style Tool
 server.tool(
   "update_paint_style",
-  "Update an existing paint style's name or color.",
+  "Modify an existing paint style's name or color value. All nodes using this style will update. Shows notification. Returns: {id, name, color}. Example: update_paint_style(styleId='S:abc123', color={r:0.3, g:0.6, b:1}). Use to refine design system.",
   {
     styleId: z.string().describe("The ID of the paint style to update"),
     name: z.string().optional().describe("New name for the paint style"),
@@ -2508,7 +2407,7 @@ server.tool(
 // Apply Paint Style Tool
 server.tool(
   "apply_paint_style",
-  "Apply a paint style to a node's fills or strokes. You can specify either the style ID or the style name.",
+  "Apply a predefined color style to a node's fills or strokes by ID or name. Auto-selects node. Returns: {success, nodeId, styleId, property}. Example: apply_paint_style(nodeId='123:1', styleName='Primary/500', property='fills'). Related: get_paint_styles.",
   {
     nodeId: z.string().describe("The ID of the node to style"),
     styleId: z.string().optional().describe("The ID of the paint style to apply"),
@@ -2548,7 +2447,7 @@ server.tool(
 // Delete Paint Style Tool
 server.tool(
   "delete_paint_style",
-  "Delete a paint style from the document.",
+  "Permanently remove a paint style from the document. Nodes using this style will revert to local colors. Shows confirmation notification. Returns: {success, styleId, styleName}. Example: delete_paint_style(styleId='S:abc123'). Use with caution.",
   {
     styleId: z.string().describe("The ID of the paint style to delete"),
   },
@@ -2582,7 +2481,7 @@ server.tool(
 // Set Gradient Fill Tool
 server.tool(
   "set_gradient_fill",
-  "Set a gradient fill on a node. Supports linear, radial, angular, and diamond gradients.",
+  "Apply a gradient fill (linear, radial, angular, or diamond) with multiple color stops. Auto-selects node. Returns: {success, nodeId, gradientType, stopsCount}. Example: set_gradient_fill(nodeId='123:1', gradientType='LINEAR', stops=[{position:0, color:{r:1,g:0,b:0}}, {position:1, color:{r:0,g:0,b:1}}], angle=45)",
   {
     nodeId: z.string().describe("The ID of the node to apply the gradient to"),
     gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).describe("Type of gradient"),
@@ -2634,7 +2533,7 @@ server.tool(
 // Get Effect Styles Tool
 server.tool(
   "get_effect_styles",
-  "Get all local effect styles (shadows, blurs) from the Figma document. Effect styles are reusable visual effects that can be applied to nodes.",
+  "Get all local effect styles (shadows, blurs) from the document. Returns: {count, styles: Array<{id, name, effects}>}. Use to discover available effect styles before applying. Example: get_effect_styles() to list all shadow/blur styles. Related: create_effect_style, apply_effect_style.",
   {},
   async () => {
     try {
@@ -2676,7 +2575,7 @@ server.tool(
 // Create Effect Style Tool
 server.tool(
   "create_effect_style",
-  "Create a new reusable effect style in Figma. Effect styles can contain shadows, blurs, and other visual effects.",
+  "Create a reusable effect style containing shadows and/or blurs. Shows notification. Returns: {id, name, effects}. Example: create_effect_style(name='Card Shadow', effects=[{type:'DROP_SHADOW', color:{r:0,g:0,b:0,a:0.2}, offsetY:4, radius:8}]). Related: apply_effect_style.",
   {
     name: z.string().describe("Name for the effect style (e.g., 'Shadow/Small', 'Blur/Background')"),
     effects: z.array(z.object({
@@ -2725,7 +2624,7 @@ server.tool(
 // Apply Effect Style Tool
 server.tool(
   "apply_effect_style",
-  "Apply an effect style to a node. You can specify either the style ID or the style name.",
+  "Apply a predefined effect style to a node by ID or name. Auto-selects node. Returns: {success, nodeId, styleId, styleName}. Example: apply_effect_style(nodeId='123:1', styleName='Card Shadow'). Related: get_effect_styles.",
   {
     nodeId: z.string().describe("The ID of the node to apply the effect style to"),
     styleId: z.string().optional().describe("The ID of the effect style to apply"),
@@ -2763,7 +2662,7 @@ server.tool(
 // Delete Effect Style Tool
 server.tool(
   "delete_effect_style",
-  "Delete an effect style from the document.",
+  "Permanently remove an effect style from the document. Nodes using this style will keep the effects locally. Shows confirmation. Returns: {success, styleId, styleName}. Example: delete_effect_style(styleId='S:abc123').",
   {
     styleId: z.string().describe("The ID of the effect style to delete"),
   },
@@ -2797,7 +2696,7 @@ server.tool(
 // Set Effects Tool
 server.tool(
   "set_effects",
-  "Set effects on a node, replacing any existing effects. Use this for complex effect combinations.",
+  "Replace all effects on a node with a new set. Clears existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: set_effects(nodeId='123:1', effects=[{type:'DROP_SHADOW',...}, {type:'LAYER_BLUR',...}]). Use for custom effect combinations.",
   {
     nodeId: z.string().describe("The ID of the node to apply effects to"),
     effects: z.array(z.object({
@@ -2846,7 +2745,7 @@ server.tool(
 // Add Drop Shadow Tool
 server.tool(
   "add_drop_shadow",
-  "Add a drop shadow effect to a node. The shadow is added to existing effects without replacing them.",
+  "Add a drop shadow (outer shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_drop_shadow(nodeId='123:1', color={r:0,g:0,b:0,a:0.25}, offsetY=4, radius=8). Use for elevation effects.",
   {
     nodeId: z.string().describe("The ID of the node to add the shadow to"),
     color: z.object({
@@ -2897,7 +2796,7 @@ server.tool(
 // Add Inner Shadow Tool
 server.tool(
   "add_inner_shadow",
-  "Add an inner shadow effect to a node. The shadow is added to existing effects without replacing them.",
+  "Add an inner shadow (inset shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_inner_shadow(nodeId='123:1', color:{r:0,g:0,b:0,a:0.15}, offsetY:2, radius=4). Use for pressed/inset states.",
   {
     nodeId: z.string().describe("The ID of the node to add the inner shadow to"),
     color: z.object({
@@ -2948,7 +2847,7 @@ server.tool(
 // Add Layer Blur Tool
 server.tool(
   "add_layer_blur",
-  "Add a layer blur effect to a node. Blurs the entire layer including its content.",
+  "Add a layer blur that blurs the node's content itself. Auto-selects and shows radius. Returns: {success, nodeId, effectsCount}. Example: add_layer_blur(nodeId='123:1', radius=10). Use for background images or disabled states. Related: add_background_blur.",
   {
     nodeId: z.string().describe("The ID of the node to add the blur to"),
     radius: z.number().min(0).describe("Blur radius in pixels"),
@@ -2986,7 +2885,7 @@ server.tool(
 // Add Background Blur Tool
 server.tool(
   "add_background_blur",
-  "Add a background blur effect to a node. Blurs content behind the layer (useful for frosted glass effects).",
+  "Add a background blur that blurs content behind the node (frosted glass effect). Auto-selects and shows radius. Returns: {success, nodeId, effectsCount}. Example: add_background_blur(nodeId='123:1', radius=20). Use for modal overlays and glass morphism. Related: add_layer_blur.",
   {
     nodeId: z.string().describe("The ID of the node to add the background blur to"),
     radius: z.number().min(0).describe("Blur radius in pixels"),
@@ -3028,7 +2927,7 @@ server.tool(
 // Get Constraints Tool
 server.tool(
   "get_constraints",
-  "Get the constraints (responsive behavior) of a node. Constraints determine how a node resizes when its parent frame changes size.",
+  "Get the responsive layout constraints of a node (how it behaves when parent resizes). Returns: {nodeId, nodeName, horizontal: 'MIN'|'CENTER'|'MAX'|'STRETCH'|'SCALE', vertical: same}. Example: get_constraints(nodeId='123:456'). Related: set_constraints",
   {
     nodeId: z.string().describe("The ID of the node to get constraints for"),
   },
@@ -3060,7 +2959,7 @@ server.tool(
 // Set Constraints Tool
 server.tool(
   "set_constraints",
-  "Set the constraints (responsive behavior) of a node. Use MIN for left/top, MAX for right/bottom, CENTER to keep centered, STRETCH to resize with parent, SCALE to scale proportionally.",
+  "Set responsive layout constraints (how node responds to parent resize). MIN=pin left/top, MAX=pin right/bottom, CENTER=stay centered, STRETCH=resize with parent, SCALE=scale proportionally. Auto-selects node. Returns: {nodeId, nodeName, horizontal, vertical}. Example: set_constraints(nodeId='123:456', horizontal='MIN', vertical='MIN'). Related: get_constraints",
   {
     nodeId: z.string().describe("The ID of the node to set constraints on"),
     horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Horizontal constraint: MIN (left), CENTER, MAX (right), STRETCH, or SCALE"),
@@ -3102,7 +3001,7 @@ server.tool(
 // Get Grid Styles Tool
 server.tool(
   "get_grid_styles",
-  "Get all local grid styles from the Figma document. Grid styles define layout grids that can be applied to frames.",
+  "Get all local grid styles (column/row/uniform grids) from the Figma document. Each style can contain multiple grid configurations. Returns: {count, styles: Array<{id, name, key, grids}>}. Example: Use to discover available grid styles before applying. Related: create_grid_style, apply_grid_style",
   {},
   async () => {
     try {
@@ -3142,7 +3041,7 @@ server.tool(
 // Create Grid Style Tool
 server.tool(
   "create_grid_style",
-  "Create a new reusable grid style in Figma. Grid styles can contain columns, rows, or uniform grids.",
+  "Create a new reusable grid style with columns, rows, or uniform grids. Can combine multiple grid types in one style (e.g., 12-column + baseline grid). Returns: {id, name, key, grids}. Example: create_grid_style(name='12-Column', grids=[{pattern:'COLUMNS', count:12, gutterSize:20}]). Related: apply_grid_style, get_grid_styles",
   {
     name: z.string().describe("Name for the grid style (e.g., '12-Column Grid', 'Mobile Layout')"),
     grids: z.array(z.object({
@@ -3192,7 +3091,7 @@ server.tool(
 // Apply Grid Style Tool
 server.tool(
   "apply_grid_style",
-  "Apply a grid style to a frame. You can specify either the style ID or the style name.",
+  "Apply a saved grid style to a frame for consistent layout grids. Specify by styleId or styleName. Auto-selects and scrolls to frame. Returns: {success, nodeId, nodeName, styleName}. Example: apply_grid_style(nodeId='123:456', styleName='12-Column Grid'). Related: get_grid_styles, set_layout_grids",
   {
     nodeId: z.string().describe("The ID of the frame to apply the grid style to"),
     styleId: z.string().optional().describe("The ID of the grid style to apply"),
@@ -3230,7 +3129,7 @@ server.tool(
 // Delete Grid Style Tool
 server.tool(
   "delete_grid_style",
-  "Delete a grid style from the document.",
+  "Delete a grid style from the document permanently. All frames using this style will retain their current grids as local overrides. Returns: {success, styleId, styleName}. Example: delete_grid_style(styleId='S:abc123'). Related: get_grid_styles, create_grid_style",
   {
     styleId: z.string().describe("The ID of the grid style to delete"),
   },
@@ -3262,7 +3161,7 @@ server.tool(
 // Set Layout Grids Tool
 server.tool(
   "set_layout_grids",
-  "Set layout grids directly on a frame, replacing any existing grids. Use this for custom grid configurations.",
+  "Set custom layout grids directly on a frame without creating a reusable style. Replaces all existing grids. Auto-selects and scrolls to frame. Returns: {success, nodeId, nodeName, gridsCount}. Example: set_layout_grids(nodeId='123:456', grids=[{pattern:'COLUMNS', count:12}]). Related: apply_grid_style, create_grid_style",
   {
     nodeId: z.string().describe("The ID of the frame to set grids on"),
     grids: z.array(z.object({
@@ -3424,7 +3323,7 @@ server.prompt(
 // Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
-  "Scan all text nodes in the selected Figma node",
+  "Scan and retrieve all text nodes within a node (recursively searches all children). Processes in chunks for large designs. Returns: {success, totalNodes, chunks: Array<{nodeId, name, characters, fontSize, fontFamily, etc}>}. Example: scan_text_nodes(nodeId='123:456'). Use for text audits, content replacement planning. Related: set_multiple_text_contents",
   {
     nodeId: z.string().describe("ID of the node to scan"),
   },
@@ -3501,7 +3400,7 @@ server.tool(
 // Node Type Scanning Tool
 server.tool(
   "scan_nodes_by_types",
-  "Scan for child nodes with specific types in the selected Figma node",
+  "Find all descendant nodes matching specific types within a node (COMPONENT, INSTANCE, FRAME, TEXT, etc.). Returns: {success, count, matchingNodes: Array<{id, name, type, parent}>}. Example: scan_nodes_by_types(nodeId='123:456', types=['COMPONENT', 'INSTANCE']). Use for component inventory, batch operations. Related: get_node_info, scan_text_nodes",
   {
     nodeId: z.string().describe("ID of the node to scan"),
     types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])")
@@ -4039,7 +3938,7 @@ This strategy enables transferring content and property overrides from a source 
 // Set Layout Mode Tool
 server.tool(
   "set_layout_mode",
-  "Set the layout mode and wrap behavior of a frame in Figma",
+  "Enable/configure auto-layout on a frame (HORIZONTAL, VERTICAL, or NONE to disable). Optional wrap for multi-line layouts. Auto-selects frame. Returns: {name}. Example: set_layout_mode(nodeId='123:456', layoutMode='HORIZONTAL', layoutWrap='WRAP'). Related: set_padding, set_axis_align, set_item_spacing",
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).describe("Layout mode for the frame"),
@@ -4077,7 +3976,7 @@ server.tool(
 // Set Padding Tool
 server.tool(
   "set_padding",
-  "Set padding values for an auto-layout frame in Figma",
+  "Set padding (inner spacing) on an auto-layout frame. Specify any/all sides independently. Auto-selects frame. Returns: {name}. Example: set_padding(nodeId='123:456', paddingTop=20, paddingLeft=20, paddingRight=20, paddingBottom=20). Related: set_layout_mode, set_item_spacing",
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     paddingTop: z.number().optional().describe("Top padding value"),
@@ -4131,7 +4030,7 @@ server.tool(
 // Set Axis Align Tool
 server.tool(
   "set_axis_align",
-  "Set primary and counter axis alignment for an auto-layout frame in Figma",
+  "Set content alignment in auto-layout frame. Primary axis (MIN/MAX/CENTER/SPACE_BETWEEN) controls main direction, counter axis (MIN/MAX/CENTER/BASELINE) controls cross direction. SPACE_BETWEEN overrides itemSpacing. Auto-selects frame. Returns: {name}. Example: set_axis_align(nodeId='123:456', primaryAxisAlignItems='CENTER', counterAxisAlignItems='CENTER'). Related: set_layout_mode, set_item_spacing",
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     primaryAxisAlignItems: z
@@ -4185,7 +4084,7 @@ server.tool(
 // Set Layout Sizing Tool
 server.tool(
   "set_layout_sizing",
-  "Set horizontal and vertical sizing modes for an auto-layout frame in Figma",
+  "Set sizing behavior for auto-layout frame or child. FIXED=explicit size, HUG=wrap content (frames/text only), FILL=expand to fill parent (auto-layout children only). Auto-selects node. Returns: {name}. Example: set_layout_sizing(nodeId='123:456', layoutSizingHorizontal='HUG', layoutSizingVertical='FIXED'). Related: set_layout_mode",
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     layoutSizingHorizontal: z
@@ -4239,7 +4138,7 @@ server.tool(
 // Set Item Spacing Tool
 server.tool(
   "set_item_spacing",
-  "Set distance between children in an auto-layout frame",
+  "Set spacing between children in auto-layout frame. itemSpacing=gap in main direction (ignored if SPACE_BETWEEN alignment), counterAxisSpacing=gap between wrapped rows/columns (requires WRAP mode). Auto-selects frame. Returns: {name, itemSpacing?, counterAxisSpacing?}. Example: set_item_spacing(nodeId='123:456', itemSpacing=16, counterAxisSpacing=12). Related: set_layout_mode, set_axis_align",
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     itemSpacing: z.number().optional().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
@@ -4282,7 +4181,7 @@ server.tool(
 // A tool to get Figma Prototyping Reactions from multiple nodes
 server.tool(
   "get_reactions",
-  "Get Figma Prototyping Reactions from multiple nodes. CRITICAL: The output MUST be processed using the 'reaction_to_connector_strategy' prompt IMMEDIATELY to generate parameters for connector lines via the 'create_connections' tool.",
+  "Get prototype interactions (ON_CLICK, etc.) from nodes showing navigation flows. Output must be processed via reaction_to_connector_strategy prompt to convert to visual connectors. Returns: {nodes: Array<{id, name, reactions: Array<{trigger, action}>}>}. Example: get_reactions(nodeIds=['123:456', '789:0']). Related: create_connections, set_default_connector",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
   },
@@ -4322,7 +4221,7 @@ server.tool(
 // Create Connectors Tool
 server.tool(
   "set_default_connector",
-  "Set a copied connector node as the default connector",
+  "Set a FigJam connector as the default style for all future connections. Copy connector from FigJam first, then call with its nodeId (or omit to use current selection). Returns: {success, message}. Example: set_default_connector(connectorId='123:456'). Required before create_connections. Related: create_connections",
   {
     connectorId: z.string().optional().describe("The ID of the connector node to set as default")
   },
@@ -4356,7 +4255,7 @@ server.tool(
 // Connect Nodes Tool
 server.tool(
   "create_connections",
-  "Create connections between nodes using the default connector style",
+  "Create visual connector lines between nodes using default connector style (must call set_default_connector first). Perfect for flow diagrams, user journey maps, prototype documentation. Returns: {success, connectionsCreated}. Example: create_connections(connections=[{startNodeId:'123:4', endNodeId:'123:5', text:'Next'}]). Related: get_reactions, set_default_connector",
   {
     connections: z.array(z.object({
       startNodeId: z.string().describe("ID of the starting node"),
@@ -4405,7 +4304,7 @@ server.tool(
 // Set Focus Tool
 server.tool(
   "set_focus",
-  "Set focus on a specific node in Figma by selecting it and scrolling viewport to it",
+  "Select a single node and scroll viewport to center it (useful for navigating to specific elements after operations). Returns: {name, id}. Example: set_focus(nodeId='123:456'). Related: set_selections, get_selection",
   {
     nodeId: z.string().describe("The ID of the node to focus on"),
   },
@@ -4437,7 +4336,7 @@ server.tool(
 // Set Selections Tool
 server.tool(
   "set_selections",
-  "Set selection to multiple nodes in Figma and scroll viewport to show them",
+  "Select multiple nodes simultaneously and scroll viewport to show them all (useful for batch operations or visual comparison). Returns: {count, selectedNodes: Array<{name, id}>}. Example: set_selections(nodeIds=['123:456', '789:0', '111:222']). Related: set_focus, get_selection",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
   },
