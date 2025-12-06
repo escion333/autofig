@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, NodeResult, ConstraintType } from '../../shared/types';
-import { getNodeById, assertNodeCapability, delay } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, delay, provideVisualFeedback } from '../utils/helpers';
 import { sendProgressUpdate, generateCommandId } from '../utils/progress';
 
 /**
@@ -25,6 +25,9 @@ export async function moveNode(params: CommandParams['move_node']): Promise<Node
 
   (node as SceneNode & { x: number; y: number }).x = x;
   (node as SceneNode & { x: number; y: number }).y = y;
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Moved: ${node.name} to (${x}, ${y})`);
 
   return {
     id: node.id,
@@ -53,6 +56,9 @@ export async function resizeNode(params: CommandParams['resize_node']): Promise<
 
   (node as SceneNode & { resize: (w: number, h: number) => void }).resize(width, height);
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Resized: ${node.name} to ${width}×${height}`);
+
   return {
     id: node.id,
     name: node.name,
@@ -80,7 +86,11 @@ export async function deleteNode(params: CommandParams['delete_node']): Promise<
     type: node.type,
   };
 
+  const nodeName = node.name;
   node.remove();
+
+  // Notify user (no selection/scroll since node is deleted)
+  figma.notify(`✅ Deleted: ${nodeName}`);
 
   return nodeInfo;
 }
@@ -229,6 +239,9 @@ export async function cloneNode(params: CommandParams['clone_node']): Promise<No
     figma.currentPage.appendChild(clone);
   }
 
+  // Provide visual feedback
+  provideVisualFeedback(clone, `✅ Cloned: ${clone.name}`);
+
   return {
     id: clone.id,
     name: clone.name,
@@ -307,6 +320,9 @@ export async function setConstraints(
     horizontal: horizontal ?? currentConstraints.horizontal,
     vertical: vertical ?? currentConstraints.vertical,
   };
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Updated constraints: ${node.name}`);
 
   return {
     nodeId: node.id,

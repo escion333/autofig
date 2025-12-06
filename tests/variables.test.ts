@@ -219,9 +219,10 @@ describe('Variables API', () => {
       expect(result.name).toBe('brand/primary');
       expect(result.resolvedType).toBe('COLOR');
       expect(result.variableCollectionId).toBe('collection-1');
+      // Verify createVariable was called with collection object (Figma API behavior)
       expect(figmaMock.variables.createVariable).toHaveBeenCalledWith(
         'brand/primary',
-        'collection-1',
+        expect.objectContaining({ id: 'collection-1', name: 'Colors' }),
         'COLOR'
       );
     });

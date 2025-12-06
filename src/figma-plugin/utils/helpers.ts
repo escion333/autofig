@@ -104,7 +104,11 @@ export async function getNodeById(nodeId: string): Promise<SceneNode> {
   }
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}. The node may have been deleted or the ID is invalid.`);
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
   }
   return node as SceneNode;
 }
@@ -116,10 +120,17 @@ export async function getContainerNode(parentId?: string): Promise<BaseNode & Ch
   if (parentId) {
     const parentNode = await figma.getNodeByIdAsync(parentId);
     if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}. The node may have been deleted or the ID is invalid.`);
+      throw new Error(
+        `Parent node not found: ${parentId}\n` +
+        `The node may have been deleted or the ID is invalid.\n` +
+        `💡 Tip: Use get_selection to get valid node IDs for containers.`
+      );
     }
     if (!('appendChild' in parentNode)) {
-      throw new Error(`Parent node "${(parentNode as SceneNode).name}" (${parentNode.type}) does not support children: ${parentId}`);
+      throw new Error(
+        `Parent node "${(parentNode as SceneNode).name}" (${parentNode.type}) cannot contain children.\n` +
+        `💡 Tip: Use FRAME, GROUP, or PAGE nodes as parents.`
+      );
     }
     return parentNode as BaseNode & ChildrenMixin;
   }
@@ -137,5 +148,55 @@ export function assertNodeCapability<T extends string>(
   if (!(capability in node)) {
     throw new Error(errorMessage || `Node does not support ${capability}: ${node.id}`);
   }
+}
+
+/**
+ * Provide visual feedback in Figma: select node, scroll to it, and notify user
+ */
+export function provideVisualFeedback(
+  node: SceneNode | SceneNode[],
+  message: string,
+  options?: {
+    skipSelection?: boolean;
+    skipScroll?: boolean;
+    skipNotify?: boolean;
+  }
+): void {
+  const nodes = Array.isArray(node) ? node : [node];
+  
+  // Select the node(s)
+  if (!options?.skipSelection) {
+    figma.currentPage.selection = nodes;
+  }
+  
+  // Scroll viewport to show the node(s)
+  if (!options?.skipScroll) {
+    figma.viewport.scrollAndZoomIntoView(nodes);
+  }
+  
+  // Show notification
+  if (!options?.skipNotify) {
+    figma.notify(message);
+  }
+}
+
+/**
+ * Create an informative error message with context and suggestions
+ */
+export function createErrorMessage(
+  operation: string,
+  error: string,
+  suggestions?: string[]
+): string {
+  let message = `Failed to ${operation}: ${error}`;
+  
+  if (suggestions && suggestions.length > 0) {
+    message += '\n\n💡 Suggestions:\n';
+    suggestions.forEach((suggestion, index) => {
+      message += `  ${index + 1}. ${suggestion}\n`;
+    });
+  }
+  
+  return message;
 }
 

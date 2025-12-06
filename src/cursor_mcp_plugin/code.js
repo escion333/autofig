@@ -149,6 +149,11 @@
   }
   __name(getSelection, "getSelection");
   async function readMyDesign() {
+    if (figma.currentPage.selection.length === 0) {
+      throw new Error(
+        "No nodes selected in Figma.\n\u{1F4A1} Tip: Select one or more nodes in Figma before using this command."
+      );
+    }
     try {
       const nodes = await Promise.all(
         figma.currentPage.selection.map((node) => figma.getNodeByIdAsync(node.id))
@@ -174,11 +179,17 @@
   async function getNodeInfo(params) {
     const { nodeId } = params;
     if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of selected nodes."
+      );
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
     }
     const response = await node.exportAsync({
       format: "JSON_REST_V1"
@@ -189,13 +200,26 @@
   async function getNodesInfo(params) {
     const { nodeIds } = params;
     if (!nodeIds || !Array.isArray(nodeIds)) {
-      throw new Error("Missing or invalid nodeIds parameter");
+      throw new Error(
+        'Missing or invalid nodeIds parameter\n\u{1F4A1} Tip: Provide an array of node IDs, e.g., ["123:456", "789:012"]'
+      );
+    }
+    if (nodeIds.length === 0) {
+      throw new Error(
+        "Empty nodeIds array provided\n\u{1F4A1} Tip: Provide at least one node ID."
+      );
     }
     try {
       const nodes = await Promise.all(
         nodeIds.map((id) => figma.getNodeByIdAsync(id))
       );
       const validNodes = nodes.filter((node) => node !== null);
+      if (validNodes.length === 0) {
+        throw new Error(
+          `None of the provided node IDs were found.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+        );
+      }
       const responses = await Promise.all(
         validNodes.map(async (node) => {
           const response = await node.exportAsync({
@@ -216,11 +240,17 @@
   async function setFocus(params) {
     const { nodeId } = params;
     if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to focus on."
+      );
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
     }
     figma.currentPage.selection = [node];
     figma.viewport.scrollAndZoomIntoView([node]);
@@ -234,16 +264,27 @@
   async function setSelections(params) {
     const { nodeIds } = params;
     if (!nodeIds || !Array.isArray(nodeIds)) {
-      throw new Error("Missing or invalid nodeIds parameter");
+      throw new Error(
+        'Missing or invalid nodeIds parameter\n\u{1F4A1} Tip: Provide an array of node IDs, e.g., ["123:456", "789:012"]'
+      );
+    }
+    if (nodeIds.length === 0) {
+      throw new Error(
+        "Empty nodeIds array provided\n\u{1F4A1} Tip: Provide at least one node ID to select."
+      );
     }
     const nodes = await Promise.all(
       nodeIds.map((id) => figma.getNodeByIdAsync(id))
     );
     const validNodes = nodes.filter((node) => node !== null);
     if (validNodes.length === 0) {
-      throw new Error("No valid nodes found");
+      throw new Error(
+        `None of the provided node IDs were found (${nodeIds.length} IDs checked).
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
     }
     figma.currentPage.selection = validNodes;
+    figma.viewport.scrollAndZoomIntoView(validNodes);
     return {
       selectionCount: validNodes.length,
       selection: validNodes.map((node) => ({
@@ -322,7 +363,11 @@
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}. The node may have been deleted or the ID is invalid.`);
+      throw new Error(
+        `Node not found: ${nodeId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
     }
     return node;
   }
@@ -331,10 +376,17 @@
     if (parentId) {
       const parentNode = await figma.getNodeByIdAsync(parentId);
       if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}. The node may have been deleted or the ID is invalid.`);
+        throw new Error(
+          `Parent node not found: ${parentId}
+The node may have been deleted or the ID is invalid.
+\u{1F4A1} Tip: Use get_selection to get valid node IDs for containers.`
+        );
       }
       if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node "${parentNode.name}" (${parentNode.type}) does not support children: ${parentId}`);
+        throw new Error(
+          `Parent node "${parentNode.name}" (${parentNode.type}) cannot contain children.
+\u{1F4A1} Tip: Use FRAME, GROUP, or PAGE nodes as parents.`
+        );
       }
       return parentNode;
     }
@@ -347,6 +399,19 @@
     }
   }
   __name(assertNodeCapability, "assertNodeCapability");
+  function provideVisualFeedback(node, message, options) {
+    const nodes = Array.isArray(node) ? node : [node];
+    if (!(options == null ? void 0 : options.skipSelection)) {
+      figma.currentPage.selection = nodes;
+    }
+    if (!(options == null ? void 0 : options.skipScroll)) {
+      figma.viewport.scrollAndZoomIntoView(nodes);
+    }
+    if (!(options == null ? void 0 : options.skipNotify)) {
+      figma.notify(message);
+    }
+  }
+  __name(provideVisualFeedback, "provideVisualFeedback");
 
   // src/figma-plugin/utils/progress.ts
   function sendProgressUpdate(commandId, commandType, status, progress, totalItems, processedItems, message, payload = null) {
@@ -641,6 +706,7 @@
     rect.name = name;
     const parent = await getContainerNode(parentId);
     parent.appendChild(rect);
+    provideVisualFeedback(rect, `\u2705 Created rectangle: ${rect.name}`);
     return {
       id: rect.id,
       name: rect.name,
@@ -697,6 +763,7 @@
     }
     const parent = await getContainerNode(parentId);
     parent.appendChild(ellipse);
+    provideVisualFeedback(ellipse, `\u2705 Created ellipse: ${ellipse.name}`);
     return {
       id: ellipse.id,
       name: ellipse.name,
@@ -780,6 +847,8 @@
     }
     const parent = await getContainerNode(parentId);
     parent.appendChild(frame);
+    const layoutInfo = layoutMode !== "NONE" ? ` (${layoutMode.toLowerCase()})` : "";
+    provideVisualFeedback(frame, `\u2705 Created frame: ${frame.name}${layoutInfo}`);
     return {
       id: frame.id,
       name: frame.name,
@@ -848,6 +917,7 @@
     }];
     const parent = await getContainerNode(parentId);
     parent.appendChild(textNode);
+    provideVisualFeedback(textNode, `\u2705 Created text: "${textNode.characters}"`);
     return {
       id: textNode.id,
       name: textNode.name,
@@ -913,6 +983,7 @@
     }
     const parent = await getContainerNode(parentId);
     parent.appendChild(polygon);
+    provideVisualFeedback(polygon, `\u2705 Created polygon: ${polygon.name} (${polygon.pointCount} sides)`);
     return {
       id: polygon.id,
       name: polygon.name,
@@ -973,6 +1044,7 @@
     }
     const parent = await getContainerNode(parentId);
     parent.appendChild(star);
+    provideVisualFeedback(star, `\u2705 Created star: ${star.name} (${star.pointCount} points)`);
     return {
       id: star.id,
       name: star.name,
@@ -1020,6 +1092,7 @@
     line.strokeWeight = strokeWeight;
     const parent = await getContainerNode(parentId);
     parent.appendChild(line);
+    provideVisualFeedback(line, `\u2705 Created line: ${line.name}`);
     return {
       id: line.id,
       name: line.name,
@@ -1088,6 +1161,7 @@
     }
     const parent = await getContainerNode(parentId);
     parent.appendChild(vector);
+    provideVisualFeedback(vector, `\u2705 Created vector: ${vector.name}`);
     return {
       id: vector.id,
       name: vector.name,
@@ -1148,6 +1222,7 @@
     if (name) {
       resultNode.name = name;
     }
+    provideVisualFeedback(resultNode, `\u2705 Boolean operation (${operation.toLowerCase()}): ${resultNode.name}`);
     return {
       id: resultNode.id,
       name: resultNode.name,
@@ -1175,6 +1250,7 @@
       throw new Error("Cannot flatten a node without a parent");
     }
     const flattenedNode = figma.flatten([node], parent);
+    provideVisualFeedback(flattenedNode, `\u2705 Flattened: ${flattenedNode.name}`);
     return {
       id: flattenedNode.id,
       name: flattenedNode.name,
@@ -1199,6 +1275,7 @@
       throw new Error("Outline stroke produced no results. Make sure the node has a stroke.");
     }
     outlinedNode.name = `${node.name} (outlined)`;
+    provideVisualFeedback(outlinedNode, `\u2705 Outlined stroke: ${outlinedNode.name}`);
     return {
       id: outlinedNode.id,
       name: outlinedNode.name,
@@ -1231,6 +1308,7 @@
       scaleMode,
       imageHash: image.hash
     }];
+    provideVisualFeedback(node, `\u2705 Set image fill: ${node.name}`);
     return {
       success: true,
       nodeId: node.id,
@@ -1245,13 +1323,22 @@
     var _a, _b, _c, _d;
     const { nodeId, color } = params || {};
     if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to modify."
+      );
     }
     if (!color) {
-      throw new Error("Missing color parameter");
+      throw new Error(
+        "Missing color parameter\n\u{1F4A1} Tip: Provide an RGBA color object, e.g., { r: 1, g: 0, b: 0, a: 1 }"
+      );
     }
     const node = await getNodeById(nodeId);
-    assertNodeCapability(node, "fills", `Node "${node.name}" (${node.type}) does not support fills: ${nodeId}`);
+    assertNodeCapability(
+      node,
+      "fills",
+      `Node "${node.name}" (${node.type}) does not support fills.
+\u{1F4A1} Tip: Only shapes, frames, and text nodes support fill colors.`
+    );
     const paintStyle = {
       type: "SOLID",
       color: {
@@ -1262,6 +1349,7 @@
       opacity: (_d = color.a) != null ? _d : 1
     };
     node.fills = [paintStyle];
+    provideVisualFeedback(node, `\u2705 Updated fill color: ${node.name}`);
     return {
       id: node.id,
       name: node.name,
@@ -1273,13 +1361,22 @@
     var _a, _b, _c, _d;
     const { nodeId, color, weight = 1 } = params || {};
     if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
+      throw new Error(
+        "Missing nodeId parameter\n\u{1F4A1} Tip: Use get_selection to get IDs of nodes to modify."
+      );
     }
     if (!color) {
-      throw new Error("Missing color parameter");
+      throw new Error(
+        "Missing color parameter\n\u{1F4A1} Tip: Provide an RGBA color object, e.g., { r: 0, g: 0, b: 0, a: 1 }"
+      );
     }
     const node = await getNodeById(nodeId);
-    assertNodeCapability(node, "strokes", `Node "${node.name}" (${node.type}) does not support strokes: ${nodeId}`);
+    assertNodeCapability(
+      node,
+      "strokes",
+      `Node "${node.name}" (${node.type}) does not support strokes.
+\u{1F4A1} Tip: Only shapes and frames support stroke colors.`
+    );
     const paintStyle = {
       type: "SOLID",
       color: {
@@ -1294,6 +1391,7 @@
     if ("strokeWeight" in node) {
       node.strokeWeight = weight;
     }
+    provideVisualFeedback(node, `\u2705 Updated stroke: ${node.name}`);
     return {
       id: node.id,
       name: node.name,
@@ -1326,6 +1424,7 @@
     } else if (radius !== void 0) {
       cornerNode.cornerRadius = radius;
     }
+    provideVisualFeedback(node, `\u2705 Updated corner radius: ${node.name}`);
     return {
       id: node.id,
       name: node.name,
@@ -1349,6 +1448,7 @@
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "opacity", `Node "${node.name}" does not support opacity: ${nodeId}`);
     node.opacity = clampedOpacity;
+    provideVisualFeedback(node, `\u2705 Updated opacity: ${node.name} (${Math.round(clampedOpacity * 100)}%)`);
     return {
       id: node.id,
       name: node.name,
@@ -2558,6 +2658,7 @@
     assertNodeCapability(node, "x", `Node does not support position: ${nodeId}`);
     node.x = x;
     node.y = y;
+    provideVisualFeedback(node, `\u2705 Moved: ${node.name} to (${x}, ${y})`);
     return {
       id: node.id,
       name: node.name,
@@ -2577,6 +2678,7 @@
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "resize", `Node does not support resizing: ${nodeId}`);
     node.resize(width, height);
+    provideVisualFeedback(node, `\u2705 Resized: ${node.name} to ${width}\xD7${height}`);
     return {
       id: node.id,
       name: node.name,
@@ -2596,7 +2698,9 @@
       name: node.name,
       type: node.type
     };
+    const nodeName = node.name;
     node.remove();
+    figma.notify(`\u2705 Deleted: ${nodeName}`);
     return nodeInfo;
   }
   __name(deleteNode, "deleteNode");
@@ -2706,6 +2810,7 @@
     if (!clone.parent) {
       figma.currentPage.appendChild(clone);
     }
+    provideVisualFeedback(clone, `\u2705 Cloned: ${clone.name}`);
     return {
       id: clone.id,
       name: clone.name,
@@ -2748,6 +2853,7 @@
       horizontal: horizontal != null ? horizontal : currentConstraints.horizontal,
       vertical: vertical != null ? vertical : currentConstraints.vertical
     };
+    provideVisualFeedback(node, `\u2705 Updated constraints: ${node.name}`);
     return {
       nodeId: node.id,
       nodeName: node.name,
@@ -4162,15 +4268,22 @@
             figma.ui.postMessage({
               type: "command-result",
               id: msg.id,
+              command: msg.command,
               result
             });
           } catch (error) {
             figma.ui.postMessage({
               type: "command-error",
               id: msg.id,
+              command: msg.command,
               error: error instanceof Error ? error.message : "Error executing command"
             });
           }
+        }
+        break;
+      case "copy-to-clipboard":
+        if (msg.text) {
+          figma.notify(`Channel copied: ${msg.text}`);
         }
         break;
     }

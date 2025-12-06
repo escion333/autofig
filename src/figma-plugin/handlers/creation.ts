@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, NodeResult } from '../../shared/types';
-import { getContainerNode, getFontStyleFromWeight, getNodeById, assertNodeCapability } from '../utils/helpers';
+import { getContainerNode, getFontStyleFromWeight, getNodeById, assertNodeCapability, provideVisualFeedback } from '../utils/helpers';
 import { setCharacters } from './text';
 
 /**
@@ -28,6 +28,9 @@ export async function createRectangle(params: CommandParams['create_rectangle'])
   // Append to parent or current page
   const parent = await getContainerNode(parentId);
   parent.appendChild(rect);
+
+  // Provide visual feedback
+  provideVisualFeedback(rect, `✅ Created rectangle: ${rect.name}`);
 
   return {
     id: rect.id,
@@ -96,6 +99,9 @@ export async function createEllipse(params: CommandParams['create_ellipse']): Pr
   // Append to parent or current page
   const parent = await getContainerNode(parentId);
   parent.appendChild(ellipse);
+
+  // Provide visual feedback
+  provideVisualFeedback(ellipse, `✅ Created ellipse: ${ellipse.name}`);
 
   return {
     id: ellipse.id,
@@ -194,6 +200,10 @@ export async function createFrame(params: CommandParams['create_frame']): Promis
   const parent = await getContainerNode(parentId);
   parent.appendChild(frame);
 
+  // Provide visual feedback
+  const layoutInfo = layoutMode !== 'NONE' ? ` (${layoutMode.toLowerCase()})` : '';
+  provideVisualFeedback(frame, `✅ Created frame: ${frame.name}${layoutInfo}`);
+
   return {
     id: frame.id,
     name: frame.name,
@@ -275,6 +285,9 @@ export async function createText(params: CommandParams['create_text']): Promise<
   const parent = await getContainerNode(parentId);
   parent.appendChild(textNode);
 
+  // Provide visual feedback
+  provideVisualFeedback(textNode, `✅ Created text: "${textNode.characters}"`);
+
   return {
     id: textNode.id,
     name: textNode.name,
@@ -352,6 +365,9 @@ export async function createPolygon(params: CommandParams['create_polygon']): Pr
   const parent = await getContainerNode(parentId);
   parent.appendChild(polygon);
 
+  // Provide visual feedback
+  provideVisualFeedback(polygon, `✅ Created polygon: ${polygon.name} (${polygon.pointCount} sides)`);
+
   return {
     id: polygon.id,
     name: polygon.name,
@@ -424,6 +440,9 @@ export async function createStar(params: CommandParams['create_star']): Promise<
   const parent = await getContainerNode(parentId);
   parent.appendChild(star);
 
+  // Provide visual feedback
+  provideVisualFeedback(star, `✅ Created star: ${star.name} (${star.pointCount} points)`);
+
   return {
     id: star.id,
     name: star.name,
@@ -482,6 +501,9 @@ export async function createLine(params: CommandParams['create_line']): Promise<
   // Append to parent or current page
   const parent = await getContainerNode(parentId);
   parent.appendChild(line);
+
+  // Provide visual feedback
+  provideVisualFeedback(line, `✅ Created line: ${line.name}`);
 
   return {
     id: line.id,
@@ -567,6 +589,9 @@ export async function createVector(params: CommandParams['create_vector']): Prom
   const parent = await getContainerNode(parentId);
   parent.appendChild(vector);
 
+  // Provide visual feedback
+  provideVisualFeedback(vector, `✅ Created vector: ${vector.name}`);
+
   return {
     id: vector.id,
     name: vector.name,
@@ -648,6 +673,9 @@ export async function booleanOperation(params: CommandParams['boolean_operation'
     resultNode.name = name;
   }
 
+  // Provide visual feedback
+  provideVisualFeedback(resultNode, `✅ Boolean operation (${operation.toLowerCase()}): ${resultNode.name}`);
+
   return {
     id: resultNode.id,
     name: resultNode.name,
@@ -686,6 +714,9 @@ export async function flattenNode(params: CommandParams['flatten_node']): Promis
   // Flatten the node
   const flattenedNode = figma.flatten([node as SceneNode], parent as FrameNode | GroupNode | PageNode);
 
+  // Provide visual feedback
+  provideVisualFeedback(flattenedNode, `✅ Flattened: ${flattenedNode.name}`);
+
   return {
     id: flattenedNode.id,
     name: flattenedNode.name,
@@ -717,6 +748,9 @@ export async function outlineStroke(params: CommandParams['outline_stroke']): Pr
   }
 
   outlinedNode.name = `${node.name} (outlined)`;
+
+  // Provide visual feedback
+  provideVisualFeedback(outlinedNode, `✅ Outlined stroke: ${outlinedNode.name}`);
 
   return {
     id: outlinedNode.id,
@@ -769,6 +803,9 @@ export async function setImageFill(params: CommandParams['set_image_fill']): Pro
     scaleMode: scaleMode as 'FILL' | 'FIT' | 'CROP' | 'TILE',
     imageHash: image.hash,
   }];
+
+  // Provide visual feedback
+  provideVisualFeedback(node as SceneNode, `✅ Set image fill: ${node.name}`);
 
   return {
     success: true,

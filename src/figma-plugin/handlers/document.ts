@@ -55,6 +55,13 @@ export async function getSelection(): Promise<SelectionResult> {
  * Read detailed design info from current selection
  */
 export async function readMyDesign(): Promise<Array<{ nodeId: string; document: ReturnType<typeof filterFigmaNode> }>> {
+  if (figma.currentPage.selection.length === 0) {
+    throw new Error(
+      'No nodes selected in Figma.\n' +
+      '💡 Tip: Select one or more nodes in Figma before using this command.'
+    );
+  }
+
   try {
     // Load all selected nodes in parallel
     const nodes = await Promise.all(
@@ -90,12 +97,19 @@ export async function getNodeInfo(params: CommandParams['get_node_info']) {
   const { nodeId } = params;
   
   if (!nodeId) {
-    throw new Error('Missing nodeId parameter');
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of selected nodes.'
+    );
   }
 
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
   }
 
   const response = await (node as any).exportAsync({
@@ -112,7 +126,17 @@ export async function getNodesInfo(params: CommandParams['get_nodes_info']) {
   const { nodeIds } = params;
   
   if (!nodeIds || !Array.isArray(nodeIds)) {
-    throw new Error('Missing or invalid nodeIds parameter');
+    throw new Error(
+      'Missing or invalid nodeIds parameter\n' +
+      '💡 Tip: Provide an array of node IDs, e.g., ["123:456", "789:012"]'
+    );
+  }
+
+  if (nodeIds.length === 0) {
+    throw new Error(
+      'Empty nodeIds array provided\n' +
+      '💡 Tip: Provide at least one node ID.'
+    );
   }
 
   try {
@@ -123,6 +147,13 @@ export async function getNodesInfo(params: CommandParams['get_nodes_info']) {
 
     // Filter out any null values (nodes that weren't found)
     const validNodes = nodes.filter((node): node is SceneNode => node !== null);
+
+    if (validNodes.length === 0) {
+      throw new Error(
+        `None of the provided node IDs were found.\n` +
+        `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+      );
+    }
 
     // Export all valid nodes in parallel
     const responses = await Promise.all(
@@ -150,12 +181,19 @@ export async function setFocus(params: CommandParams['set_focus']) {
   const { nodeId } = params;
   
   if (!nodeId) {
-    throw new Error('Missing nodeId parameter');
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to focus on.'
+    );
   }
 
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
+    throw new Error(
+      `Node not found: ${nodeId}\n` +
+      `The node may have been deleted or the ID is invalid.\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
   }
 
   // Set selection to this node
@@ -178,7 +216,17 @@ export async function setSelections(params: CommandParams['set_selections']) {
   const { nodeIds } = params;
   
   if (!nodeIds || !Array.isArray(nodeIds)) {
-    throw new Error('Missing or invalid nodeIds parameter');
+    throw new Error(
+      'Missing or invalid nodeIds parameter\n' +
+      '💡 Tip: Provide an array of node IDs, e.g., ["123:456", "789:012"]'
+    );
+  }
+
+  if (nodeIds.length === 0) {
+    throw new Error(
+      'Empty nodeIds array provided\n' +
+      '💡 Tip: Provide at least one node ID to select.'
+    );
   }
 
   // Load all nodes in parallel
@@ -190,11 +238,17 @@ export async function setSelections(params: CommandParams['set_selections']) {
   const validNodes = nodes.filter((node): node is SceneNode => node !== null);
 
   if (validNodes.length === 0) {
-    throw new Error('No valid nodes found');
+    throw new Error(
+      `None of the provided node IDs were found (${nodeIds.length} IDs checked).\n` +
+      `💡 Tip: Use get_selection or get_document_info to get valid node IDs.`
+    );
   }
 
   // Set selection
   figma.currentPage.selection = validNodes;
+  
+  // Zoom to show selected nodes
+  figma.viewport.scrollAndZoomIntoView(validNodes);
 
   return {
     selectionCount: validNodes.length,

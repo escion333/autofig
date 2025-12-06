@@ -3,7 +3,7 @@
  */
 
 import type { CommandParams, NodeResult } from '../../shared/types';
-import { getNodeById, assertNodeCapability } from '../utils/helpers';
+import { getNodeById, assertNodeCapability, provideVisualFeedback } from '../utils/helpers';
 
 /**
  * Set fill color on a node
@@ -12,15 +12,26 @@ export async function setFillColor(params: CommandParams['set_fill_color']): Pro
   const { nodeId, color } = params || {};
 
   if (!nodeId) {
-    throw new Error('Missing nodeId parameter');
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to modify.'
+    );
   }
 
   if (!color) {
-    throw new Error('Missing color parameter');
+    throw new Error(
+      'Missing color parameter\n' +
+      '💡 Tip: Provide an RGBA color object, e.g., { r: 1, g: 0, b: 0, a: 1 }'
+    );
   }
 
   const node = await getNodeById(nodeId);
-  assertNodeCapability(node, 'fills', `Node "${node.name}" (${node.type}) does not support fills: ${nodeId}`);
+  assertNodeCapability(
+    node, 
+    'fills', 
+    `Node "${node.name}" (${node.type}) does not support fills.\n` +
+    `💡 Tip: Only shapes, frames, and text nodes support fill colors.`
+  );
 
   const paintStyle: SolidPaint = {
     type: 'SOLID',
@@ -33,6 +44,9 @@ export async function setFillColor(params: CommandParams['set_fill_color']): Pro
   };
 
   (node as GeometryMixin).fills = [paintStyle];
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Updated fill color: ${node.name}`);
 
   return {
     id: node.id,
@@ -48,15 +62,26 @@ export async function setStrokeColor(params: CommandParams['set_stroke_color']):
   const { nodeId, color, weight = 1 } = params || {};
 
   if (!nodeId) {
-    throw new Error('Missing nodeId parameter');
+    throw new Error(
+      'Missing nodeId parameter\n' +
+      '💡 Tip: Use get_selection to get IDs of nodes to modify.'
+    );
   }
 
   if (!color) {
-    throw new Error('Missing color parameter');
+    throw new Error(
+      'Missing color parameter\n' +
+      '💡 Tip: Provide an RGBA color object, e.g., { r: 0, g: 0, b: 0, a: 1 }'
+    );
   }
 
   const node = await getNodeById(nodeId);
-  assertNodeCapability(node, 'strokes', `Node "${node.name}" (${node.type}) does not support strokes: ${nodeId}`);
+  assertNodeCapability(
+    node, 
+    'strokes', 
+    `Node "${node.name}" (${node.type}) does not support strokes.\n` +
+    `💡 Tip: Only shapes and frames support stroke colors.`
+  );
 
   const paintStyle: SolidPaint = {
     type: 'SOLID',
@@ -75,6 +100,9 @@ export async function setStrokeColor(params: CommandParams['set_stroke_color']):
   if ('strokeWeight' in node) {
     (node as GeometryMixin).strokeWeight = weight;
   }
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Updated stroke: ${node.name}`);
 
   return {
     id: node.id,
@@ -127,6 +155,9 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
     cornerNode.cornerRadius = radius;
   }
 
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Updated corner radius: ${node.name}`);
+
   return {
     id: node.id,
     name: node.name,
@@ -159,6 +190,9 @@ export async function setOpacity(params: CommandParams['set_opacity']): Promise<
   assertNodeCapability(node, 'opacity', `Node "${node.name}" does not support opacity: ${nodeId}`);
 
   (node as BlendMixin).opacity = clampedOpacity;
+
+  // Provide visual feedback
+  provideVisualFeedback(node, `✅ Updated opacity: ${node.name} (${Math.round(clampedOpacity * 100)}%)`);
 
   return {
     id: node.id,

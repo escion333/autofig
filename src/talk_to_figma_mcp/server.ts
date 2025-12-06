@@ -62,6 +62,34 @@ const logger = {
   log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
 };
 
+// Command-specific timeout configurations (in milliseconds)
+// Commands that process large documents or perform batch operations need longer timeouts
+const COMMAND_TIMEOUTS: Record<string, number> = {
+  // Text operations - can be slow on large documents
+  'scan_text_nodes': 120000,           // 2 minutes - scanning large documents
+  'set_multiple_text_contents': 120000, // 2 minutes - batch text updates
+  
+  // Export operations - can be slow for complex nodes
+  'export_node_as_image': 90000,       // 90 seconds - complex exports
+  
+  // Annotation operations - can be slow with many annotations
+  'set_multiple_annotations': 90000,   // 90 seconds - batch annotations
+  'get_annotations': 60000,            // 1 minute - reading many annotations
+  
+  // Node scanning operations
+  'scan_nodes_by_types': 90000,        // 90 seconds - scanning large subtrees
+  
+  // Default timeout for all other commands
+  'default': 30000                     // 30 seconds
+};
+
+/**
+ * Get timeout for a specific command
+ */
+function getCommandTimeout(command: FigmaCommand): number {
+  return COMMAND_TIMEOUTS[command as string] || COMMAND_TIMEOUTS.default;
+}
+
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
 const pendingRequests = new Map<string, {
@@ -73,6 +101,17 @@ const pendingRequests = new Map<string, {
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
+
+// Reconnection state
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Stale request cleanup
+const STALE_REQUEST_THRESHOLD = 300000; // 5 minutes
+const CLEANUP_INTERVAL = 60000; // Run cleanup every minute
 
 // Create MCP server
 const server = new McpServer({
@@ -89,7 +128,7 @@ const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${server
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "Get detailed information about the current Figma document including name, ID, and current page. Returns: {name: string, id: string, currentPage: {name: string, id: string}}. Use this to understand the document structure before making changes.",
   {},
   async () => {
     try {
@@ -119,7 +158,7 @@ server.tool(
 // Selection Tool
 server.tool(
   "get_selection",
-  "Get information about the current selection in Figma",
+  "Get information about the current selection in Figma. Returns: {count: number, nodes: Array<{id: string, name: string, type: string}>}. Use this to get valid node IDs before modifying nodes.",
   {},
   async () => {
     try {
@@ -149,7 +188,7 @@ server.tool(
 // Read My Design Tool
 server.tool(
   "read_my_design",
-  "Get detailed information about the current selection in Figma, including all node details",
+  "Get detailed information about the current selection including fills, strokes, text content, layout properties, and children. Returns filtered JSON with all relevant node properties. Use after create operations to verify results.",
   {},
   async () => {
     try {
@@ -179,7 +218,7 @@ server.tool(
 // Node Info Tool
 server.tool(
   "get_node_info",
-  "Get detailed information about a specific node in Figma",
+  "Get detailed information about a specific node by ID including type, position, size, fills, strokes, and text content. Returns filtered JSON. Example: get_node_info(nodeId='123:456'). Related: get_nodes_info for multiple nodes.",
   {
     nodeId: z.string().describe("The ID of the node to get information about"),
   },
@@ -314,7 +353,7 @@ function filterFigmaNode(node: any) {
 // Nodes Info Tool
 server.tool(
   "get_nodes_info",
-  "Get detailed information about multiple nodes in Figma",
+  "Get detailed information about multiple nodes efficiently in parallel. Returns array of node details. Example: get_nodes_info(nodeIds=['123:1', '123:2']). Use when inspecting multiple nodes at once.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
   },
@@ -352,7 +391,7 @@ server.tool(
 // Create Rectangle Tool
 server.tool(
   "create_rectangle",
-  "Create a new rectangle in Figma",
+  "Create a new rectangle shape at specified position and size. Auto-selects and scrolls to the new node. Returns: {id, name, x, y, width, height}. Example: create_rectangle(x=100, y=100, width=200, height=150, name='My Box')",
   {
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
@@ -399,7 +438,7 @@ server.tool(
 // Create Frame Tool
 server.tool(
   "create_frame",
-  "Create a new frame in Figma",
+  "Create a new frame (container) with optional auto-layout. Frames can hold other elements and support advanced layout properties. Auto-selects and scrolls to new node. Returns: {id, name, x, y, width, height, layoutMode}. Example: create_frame(x=0, y=0, width=400, height=300, layoutMode='VERTICAL', itemSpacing=16)",
   {
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
@@ -528,7 +567,7 @@ server.tool(
 // Create Text Tool
 server.tool(
   "create_text",
-  "Create a new text element in Figma with custom font support",
+  "Create a new text node with custom font, size, weight, and color. Auto-selects and scrolls to new text. Returns: {id, name, characters, fontSize, fontFamily}. Example: create_text(x=100, y=100, text='Hello', fontSize=24, fontWeight=700, fontColor={r:0,g:0,b:0})",
   {
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
@@ -689,7 +728,7 @@ server.tool(
 // Set Fill Color Tool
 server.tool(
   "set_fill_color",
-  "Set the fill color of a node in Figma can be TextNode or FrameNode",
+  "Set the fill (background) color of a node. Works on shapes, frames, and text nodes. Auto-selects and scrolls to node. Returns: {id, name, fills}. Example: set_fill_color(nodeId='123:1', r=1, g=0, b=0, a=1) for red",
   {
     nodeId: z.string().describe("The ID of the node to modify"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -773,7 +812,7 @@ server.tool(
 // Move Node Tool
 server.tool(
   "move_node",
-  "Move a node to a new position in Figma",
+  "Move a node to a new (x, y) position. Auto-selects and scrolls to node. Returns: {id, name, x, y}. Example: move_node(nodeId='123:1', x=200, y=150)",
   {
     nodeId: z.string().describe("The ID of the node to move"),
     x: z.number().describe("New X position"),
@@ -842,7 +881,7 @@ server.tool(
 // Resize Node Tool
 server.tool(
   "resize_node",
-  "Resize a node in Figma",
+  "Resize a node to new width and height. Auto-selects and scrolls to node. Returns: {id, name, width, height}. Example: resize_node(nodeId='123:1', width=300, height=200)",
   {
     nodeId: z.string().describe("The ID of the node to resize"),
     width: z.number().positive().describe("New width"),
@@ -4546,12 +4585,20 @@ function connectToFigma(port: number = 3055) {
     return;
   }
 
+  // Clear any pending reconnection attempts
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+
   const wsUrl = serverUrl === 'localhost' ? `${WS_URL}:${port}` : WS_URL;
-  logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
+  logger.info(`Connecting to Figma socket server at ${wsUrl}... (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
   ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
     logger.info('Connected to Figma socket server');
+    // Reset reconnection state on successful connection
+    reconnectAttempts = 0;
     // Reset channel on new connection
     currentChannel = null;
   });
@@ -4655,11 +4702,53 @@ function connectToFigma(port: number = 3055) {
       pendingRequests.delete(id);
     }
 
-    // Attempt to reconnect
-    logger.info('Attempting to reconnect in 2 seconds...');
-    setTimeout(() => connectToFigma(port), 2000);
+    // Attempt to reconnect with exponential backoff
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      // Calculate exponential backoff delay: min(BASE_DELAY * 2^attempts, MAX_DELAY)
+      const delay = Math.min(
+        BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+        MAX_RECONNECT_DELAY
+      );
+      
+      logger.info(`Attempting to reconnect in ${delay / 1000} seconds... (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+      reconnectAttempts++;
+      
+      reconnectTimeout = setTimeout(() => {
+        connectToFigma(port);
+      }, delay);
+    } else {
+      logger.error(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Please restart the server.`);
+    }
   });
 }
+
+/**
+ * Cleanup stale pending requests
+ * Removes requests that haven't had any activity for STALE_REQUEST_THRESHOLD milliseconds
+ */
+function cleanupStaleRequests() {
+  const now = Date.now();
+  let cleanedCount = 0;
+
+  for (const [id, request] of pendingRequests.entries()) {
+    const timeSinceActivity = now - request.lastActivity;
+    
+    if (timeSinceActivity > STALE_REQUEST_THRESHOLD) {
+      logger.warn(`Cleaning up stale request ${id} (inactive for ${timeSinceActivity / 1000}s)`);
+      clearTimeout(request.timeout);
+      request.reject(new Error(`Request abandoned - no activity for ${timeSinceActivity / 1000} seconds`));
+      pendingRequests.delete(id);
+      cleanedCount++;
+    }
+  }
+
+  if (cleanedCount > 0) {
+    logger.info(`Cleaned up ${cleanedCount} stale request(s)`);
+  }
+}
+
+// Start periodic cleanup of stale requests
+setInterval(cleanupStaleRequests, CLEANUP_INTERVAL);
 
 // Function to join a channel
 async function joinChannel(channelName: string): Promise<void> {
@@ -4681,7 +4770,7 @@ async function joinChannel(channelName: string): Promise<void> {
 function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
-  timeoutMs: number = 30000
+  timeoutMs?: number
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // If not connected, try to connect first
@@ -4697,6 +4786,9 @@ function sendCommandToFigma(
       reject(new Error("Must join a channel before sending commands"));
       return;
     }
+
+    // Use command-specific timeout if not explicitly provided
+    const actualTimeout = timeoutMs ?? getCommandTimeout(command);
 
     const id = uuidv4();
     const request = {
@@ -4715,14 +4807,14 @@ function sendCommandToFigma(
       },
     };
 
-    // Set timeout for request
+    // Set timeout for request (using command-specific timeout)
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        logger.error(`Request ${id} to Figma timed out after ${timeoutMs / 1000} seconds`);
-        reject(new Error('Request to Figma timed out'));
+        logger.error(`Request ${id} (${command}) timed out after ${actualTimeout / 1000} seconds`);
+        reject(new Error(`Request to Figma timed out after ${actualTimeout / 1000} seconds`));
       }
-    }, timeoutMs);
+    }, actualTimeout);
 
     // Store the promise callbacks to resolve/reject later
     pendingRequests.set(id, {
@@ -4733,7 +4825,7 @@ function sendCommandToFigma(
     });
 
     // Send the request
-    logger.info(`Sending command to Figma: ${command}`);
+    logger.info(`Sending command to Figma: ${command} (timeout: ${actualTimeout / 1000}s)`);
     logger.debug(`Request details: ${JSON.stringify(request)}`);
     ws.send(JSON.stringify(request));
   });

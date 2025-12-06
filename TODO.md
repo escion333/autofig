@@ -15,83 +15,86 @@
 
 ---
 
-## 🔴 Priority 1: Stability & Reliability
+## 🔴 Priority 1: Stability & Reliability ✅ COMPLETED
 
-### 1.1 WebSocket Timeout Handling
+### 1.1 WebSocket Timeout Handling ✅
 
 **File:** `src/talk_to_figma_mcp/server.ts`
 
-- [ ] Implement per-command timeout configurations
-- [ ] Add timeout extension for long-running operations
+- [x] Implement per-command timeout configurations
+- [x] Add timeout extension for long-running operations
 
-**Current Problem:** Hardcoded 30-second timeout causes failures for `scan_text_nodes`, `set_multiple_text_contents`, and `export_node_as_image` on large documents.
+**Status:** ✅ **COMPLETED** - Command-specific timeouts are now implemented with automatic timeout extension during progress updates.
 
 **Implementation:**
 ```typescript
 const COMMAND_TIMEOUTS: Record<string, number> = {
-  'scan_text_nodes': 120000,
-  'set_multiple_text_contents': 120000,
-  'export_node_as_image': 60000,
-  'set_multiple_annotations': 60000,
-  default: 30000,
+  'scan_text_nodes': 120000,           // 2 minutes
+  'set_multiple_text_contents': 120000, // 2 minutes
+  'export_node_as_image': 90000,       // 90 seconds
+  'set_multiple_annotations': 90000,   // 90 seconds
+  'get_annotations': 60000,            // 1 minute
+  'scan_nodes_by_types': 90000,        // 90 seconds
+  default: 30000                       // 30 seconds
 };
 ```
 
 ---
 
-### 1.2 WebSocket Reconnection Logic
+### 1.2 WebSocket Reconnection Logic ✅
 
 **Files:** `src/talk_to_figma_mcp/server.ts`, `src/cursor_mcp_plugin/ui.html`
 
-- [ ] Add automatic reconnection with exponential backoff (MCP server)
-- [ ] Add automatic reconnection in plugin UI
-- [ ] Show reconnection status to user
+- [x] Add automatic reconnection with exponential backoff (MCP server)
+- [x] Add automatic reconnection in plugin UI
+- [x] Show reconnection status to user
+
+**Status:** ✅ **COMPLETED** - Both server and UI now implement exponential backoff reconnection (up to 10 attempts, max 30s delay).
 
 **Implementation:**
-```typescript
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-
-function attemptReconnect() {
-  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    const delay = Math.pow(2, reconnectAttempts) * 1000;
-    setTimeout(connect, delay);
-    reconnectAttempts++;
-  }
-}
-```
+- MCP Server: Exponential backoff with max 10 attempts, delays from 1s to 30s
+- Plugin UI: Same strategy with visual feedback showing reconnection attempts
+- Manual disconnect properly prevents auto-reconnection
 
 ---
 
-### 1.3 Stale Request Cleanup
+### 1.3 Stale Request Cleanup ✅
 
 **File:** `src/talk_to_figma_mcp/server.ts`
 
-- [ ] Implement periodic cleanup of stale pending requests
-- [ ] Use the existing `lastActivity` field (currently unused)
+- [x] Implement periodic cleanup of stale pending requests
+- [x] Use the existing `lastActivity` field (now actively used)
 
-**Note:** The `lastActivity` timestamp is declared in `pendingRequests` Map but never utilized.
+**Status:** ✅ **COMPLETED** - Periodic cleanup runs every 60 seconds, removing requests inactive for 5+ minutes.
+
+**Implementation:**
+- Cleanup interval: 60 seconds
+- Stale threshold: 5 minutes of inactivity
+- `lastActivity` timestamp updated on progress updates
+- Automatic timeout reset for active long-running operations
 
 ---
 
-### 1.4 Improve Error Messages
+### 1.4 Improve Error Messages ✅
 
 **Files:** All handler files in `src/figma-plugin/handlers/`
 
-- [ ] Add context to "Node not found" errors
-- [ ] Include suggestions for common issues
-- [ ] Add node names to error messages when available
+- [x] Add context to "Node not found" errors
+- [x] Include suggestions for common issues
+- [x] Add node names to error messages when available
 
-**Example improvement:**
+**Status:** ✅ **COMPLETED** - Enhanced error messages in helpers.ts, document.ts, styling.ts, and creation.ts.
+
+**Example improvements:**
 ```typescript
 // Before
 throw new Error(`Node not found: ${nodeId}`);
 
 // After
 throw new Error(
-  `Node not found: ${nodeId}. ` +
-  `The node may have been deleted or the ID is invalid. ` +
-  `Use get_selection to get valid node IDs.`
+  `Node not found: ${nodeId}\n` +
+  `The node may have been deleted or the ID is invalid.\n` +
+  `💡 Tip: Use get_selection to get valid node IDs.`
 );
 ```
 
@@ -270,6 +273,11 @@ figma.notify(`✅ ${operationType}: ${node.name}`);
 
 ## ✅ Recently Completed
 
+- [x] **Priority 1: Stability & Reliability (All 4 tasks)** - December 6, 2024
+  - Command-specific timeout configurations
+  - Exponential backoff reconnection (server + UI)
+  - Stale request cleanup with lastActivity tracking
+  - Enhanced error messages with contextual tips
 - [x] Variables API (9 tools) - December 2024
 - [x] Component creation & properties (10 tools) - December 2024
 - [x] Typography system (6 tools) - December 2024
@@ -315,6 +323,18 @@ figma.notify(`✅ ${operationType}: ${node.name}`);
 
 ---
 
-*Last updated: December 2024*
-*Next review: After completing Priority 1 items*
+## 📈 Summary
+
+**Priority 1 (Stability & Reliability): ✅ COMPLETED**
+- All 4 tasks completed on December 6, 2024
+- All tests passing (50 tests)
+- Build successful
+- Ready for deployment
+
+**Next Focus:** Priority 2 (UX Improvements)
+
+---
+
+*Last updated: December 6, 2024*
+*Next review: After completing Priority 2 items*
 

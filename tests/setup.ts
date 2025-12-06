@@ -113,9 +113,11 @@ let createdCollectionIdCounter = 100;
 // Create mock variable factory
 function createMockVariable(
   name: string,
-  collectionId: string,
+  collection: string | MockVariableCollection,
   resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
 ): MockVariable & { setValueForMode: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } {
+  // Handle both string ID and collection object (Figma API takes collection object)
+  const collectionId = typeof collection === 'string' ? collection : collection.id;
   const id = `var-created-${createdVariableIdCounter++}`;
   const variable = {
     id,
@@ -180,8 +182,8 @@ const figmaMock = {
     getVariableById: vi.fn((id: string) =>
       mockVariables.find((v) => v.id === id) || null
     ),
-    createVariable: vi.fn((name: string, collectionId: string, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
-      createMockVariable(name, collectionId, resolvedType)
+    createVariable: vi.fn((name: string, collection: string | MockVariableCollection, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
+      createMockVariable(name, collection, resolvedType)
     ),
     createVariableCollection: vi.fn((name: string) => createMockCollection(name)),
   },
@@ -217,8 +219,8 @@ export function resetFigmaMocks() {
   figmaMock.variables.getVariableByIdAsync.mockImplementation((id: string) =>
     Promise.resolve(mockVariables.find((v) => v.id === id) || null)
   );
-  figmaMock.variables.createVariable.mockImplementation((name: string, collectionId: string, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
-    createMockVariable(name, collectionId, resolvedType)
+  figmaMock.variables.createVariable.mockImplementation((name: string, collection: string | MockVariableCollection, resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN') =>
+    createMockVariable(name, collection, resolvedType)
   );
   figmaMock.variables.createVariableCollection.mockImplementation((name: string) =>
     createMockCollection(name)

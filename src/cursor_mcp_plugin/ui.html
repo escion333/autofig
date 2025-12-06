@@ -167,6 +167,84 @@
       .operation-error {
         color: #ff9999;
       }
+      /* Activity indicator styles */
+      .activity-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #666666;
+        margin-left: 8px;
+      }
+      .activity-indicator.active {
+        background-color: #4ade80;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      /* Command history styles */
+      .history-item {
+        padding: 8px;
+        margin-bottom: 4px;
+        background-color: #2d2d2d;
+        border-radius: 4px;
+        font-size: 12px;
+        border-left: 3px solid #444444;
+      }
+      .history-item.success {
+        border-left-color: #4ade80;
+      }
+      .history-item.error {
+        border-left-color: #ff9999;
+      }
+      .history-item-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .history-command {
+        font-weight: 600;
+        color: #18a0fb;
+      }
+      .history-time {
+        color: #999999;
+        font-size: 11px;
+      }
+      .history-list {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .channel-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        background-color: #2d2d2d;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 13px;
+        color: #4ade80;
+        margin-top: 8px;
+      }
+      .copy-btn {
+        background-color: #444444;
+        border: none;
+        color: #e0e0e0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: background-color 0.2s;
+      }
+      .copy-btn:hover {
+        background-color: #555555;
+      }
+      .copy-btn.copied {
+        background-color: #1a472a;
+        color: #4ade80;
+      }
     </style>
   </head>
   <body>
@@ -179,13 +257,21 @@
           />
         </div>
         <div class="header-text">
-          <h1>AutoFig Plugin</h1>
+          <h1>AutoFig Plugin <span id="activity-indicator" class="activity-indicator"></span></h1>
           <p>Connect Figma to Cursor AI using MCP</p>
         </div>
+      </div>
+      
+      <!-- Last Command Display -->
+      <div id="last-command-section" class="section hidden" style="margin-bottom: 16px; padding: 8px; background-color: #2d2d2d; border-radius: 4px;">
+        <div style="font-size: 11px; color: #999999; margin-bottom: 4px;">Last Command:</div>
+        <div id="last-command-text" style="font-size: 12px; color: #18a0fb; font-weight: 500;"></div>
+        <div id="last-command-time" style="font-size: 11px; color: #666666; margin-top: 2px;"></div>
       </div>
 
       <div class="tabs">
         <div id="tab-connection" class="tab active">Connection</div>
+        <div id="tab-history" class="tab">History</div>
         <div id="tab-about" class="tab">About</div>
       </div>
 
@@ -208,6 +294,15 @@
         <div id="connection-status" class="status disconnected">
           Not connected to Cursor MCP server
         </div>
+        
+        <!-- Channel Name Display with Copy Button -->
+        <div id="channel-display" class="hidden" style="margin-top: 12px;">
+          <label style="font-size: 12px;">Channel Name:</label>
+          <div class="channel-name">
+            <span id="channel-name-text"></span>
+            <button id="copy-channel-btn" class="copy-btn">Copy</button>
+          </div>
+        </div>
 
         <div class="section">
           <button id="btn-disconnect" class="secondary" disabled>
@@ -229,6 +324,17 @@
         </div>
       </div>
 
+      <div id="content-history" class="tab-content">
+        <div class="section">
+          <h2>Command History</h2>
+          <p style="font-size: 12px; color: #999999; margin-bottom: 12px;">Last 10 commands executed</p>
+          <div id="history-list" class="history-list">
+            <div style="text-align: center; color: #666666; padding: 20px;">No commands executed yet</div>
+          </div>
+          <button id="clear-history-btn" class="secondary" style="margin-top: 12px; width: 100%;">Clear History</button>
+        </div>
+      </div>
+
       <div id="content-about" class="tab-content">
         <div class="section">
           <h2>About AutoFig Plugin</h2>
@@ -241,7 +347,7 @@
               >Github</a
             >
           </p>
-          <p>Version: 1.0.0</p>
+          <p>Version: 0.3.5</p>
 
           <h2>How to Use</h2>
           <ol>
@@ -261,13 +367,32 @@
         serverPort: 3055,
         pendingRequests: new Map(),
         channel: null,
+        reconnectAttempts: 0,
+        reconnectTimeout: null,
+        manualDisconnect: false, // Track if user manually disconnected
+        commandHistory: [],
+        lastCommandTime: null,
       };
+
+      // Reconnection configuration
+      const MAX_RECONNECT_ATTEMPTS = 10;
+      const BASE_RECONNECT_DELAY = 1000; // 1 second
+      const MAX_RECONNECT_DELAY = 30000; // 30 seconds
 
       // UI Elements
       const portInput = document.getElementById("port");
       const connectButton = document.getElementById("btn-connect");
       const disconnectButton = document.getElementById("btn-disconnect");
       const connectionStatus = document.getElementById("connection-status");
+      const activityIndicator = document.getElementById("activity-indicator");
+      const channelDisplay = document.getElementById("channel-display");
+      const channelNameText = document.getElementById("channel-name-text");
+      const copyChannelBtn = document.getElementById("copy-channel-btn");
+      const historyList = document.getElementById("history-list");
+      const clearHistoryBtn = document.getElementById("clear-history-btn");
+      const lastCommandSection = document.getElementById("last-command-section");
+      const lastCommandText = document.getElementById("last-command-text");
+      const lastCommandTime = document.getElementById("last-command-time");
 
       // Tabs
       const tabs = document.querySelectorAll(".tab");
@@ -305,10 +430,22 @@
             return;
           }
 
+          // Clear any pending reconnection attempts
+          if (state.reconnectTimeout) {
+            clearTimeout(state.reconnectTimeout);
+            state.reconnectTimeout = null;
+          }
+
+          // Reset manual disconnect flag
+          state.manualDisconnect = false;
+
           state.serverPort = port;
           state.socket = new WebSocket(`ws://localhost:${port}`);
 
           state.socket.onopen = () => {
+            // Reset reconnection attempts on successful connection
+            state.reconnectAttempts = 0;
+            
             // Generate random channel name
             const channelName = generateChannelName();
             console.log("Joining channel:", channelName);
@@ -335,8 +472,12 @@
                   const channelName = data.channel;
                   updateConnectionStatus(
                     true,
-                    `Connected to server on port ${port} in channel: <strong>${channelName}</strong>`
+                    `Connected to server on port ${port}`
                   );
+                  
+                  // Show channel name with copy button
+                  channelNameText.textContent = channelName;
+                  channelDisplay.classList.remove("hidden");
 
                   // Notify the plugin code
                   parent.postMessage(
@@ -364,7 +505,13 @@
           state.socket.onclose = () => {
             state.connected = false;
             state.socket = null;
-            updateConnectionStatus(false, "Disconnected from server");
+            
+            // Only attempt to reconnect if not manually disconnected
+            if (!state.manualDisconnect) {
+              attemptReconnect(port);
+            } else {
+              updateConnectionStatus(false, "Disconnected from server");
+            }
           };
 
           state.socket.onerror = (error) => {
@@ -382,8 +529,50 @@
         }
       }
 
+      // Attempt to reconnect with exponential backoff
+      function attemptReconnect(port) {
+        if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          updateConnectionStatus(
+            false,
+            `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please try manually.`
+          );
+          return;
+        }
+
+        // Calculate exponential backoff delay
+        const delay = Math.min(
+          BASE_RECONNECT_DELAY * Math.pow(2, state.reconnectAttempts),
+          MAX_RECONNECT_DELAY
+        );
+
+        const attemptNum = state.reconnectAttempts + 1;
+        updateConnectionStatus(
+          false,
+          `Reconnecting in ${delay / 1000}s... (Attempt ${attemptNum}/${MAX_RECONNECT_ATTEMPTS})`
+        );
+        connectionStatus.className = "status info";
+
+        state.reconnectAttempts++;
+        state.reconnectTimeout = setTimeout(() => {
+          console.log(`Reconnection attempt ${attemptNum}/${MAX_RECONNECT_ATTEMPTS}`);
+          connectToServer(port);
+        }, delay);
+      }
+
       // Disconnect from websocket server
       function disconnectFromServer() {
+        // Set manual disconnect flag to prevent auto-reconnection
+        state.manualDisconnect = true;
+        
+        // Clear any pending reconnection attempts
+        if (state.reconnectTimeout) {
+          clearTimeout(state.reconnectTimeout);
+          state.reconnectTimeout = null;
+        }
+        
+        // Reset reconnection attempts
+        state.reconnectAttempts = 0;
+        
         if (state.socket) {
           state.socket.close();
           state.socket = null;
@@ -413,6 +602,9 @@
         // If it's a new command
         if (data.command) {
           try {
+            // Show activity
+            showActivity();
+            
             // Send the command to the plugin code
             parent.postMessage(
               {
@@ -426,6 +618,12 @@
               "*"
             );
           } catch (error) {
+            // Hide activity
+            hideActivity();
+            
+            // Add to history
+            addCommandToHistory(data.command, false, error.message);
+            
             // Send error back to WebSocket
             sendErrorResponse(
               data.id,
@@ -623,6 +821,109 @@
         progressPercentage.textContent = "0%";
       }
 
+      // Add command to history
+      function addCommandToHistory(command, success, error = null) {
+        const historyItem = {
+          command,
+          timestamp: new Date(),
+          success,
+          error,
+        };
+        
+        // Add to beginning of array
+        state.commandHistory.unshift(historyItem);
+        
+        // Keep only last 10 commands
+        if (state.commandHistory.length > 10) {
+          state.commandHistory = state.commandHistory.slice(0, 10);
+        }
+        
+        // Update UI
+        updateHistoryUI();
+        updateLastCommandUI(command);
+      }
+      
+      // Update history UI
+      function updateHistoryUI() {
+        if (state.commandHistory.length === 0) {
+          historyList.innerHTML = '<div style="text-align: center; color: #666666; padding: 20px;">No commands executed yet</div>';
+          return;
+        }
+        
+        historyList.innerHTML = state.commandHistory.map(item => {
+          const timeStr = formatTime(item.timestamp);
+          const statusClass = item.success ? 'success' : 'error';
+          const errorMsg = item.error ? `<div style="color: #ff9999; font-size: 11px; margin-top: 4px;">${item.error}</div>` : '';
+          
+          return `
+            <div class="history-item ${statusClass}">
+              <div class="history-item-header">
+                <span class="history-command">${item.command}</span>
+                <span class="history-time">${timeStr}</span>
+              </div>
+              ${errorMsg}
+            </div>
+          `;
+        }).join('');
+      }
+      
+      // Update last command UI
+      function updateLastCommandUI(command) {
+        lastCommandSection.classList.remove("hidden");
+        lastCommandText.textContent = command;
+        lastCommandTime.textContent = `Executed at ${formatTime(new Date())}`;
+        state.lastCommandTime = new Date();
+      }
+      
+      // Format time
+      function formatTime(date) {
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
+      }
+      
+      // Show activity indicator
+      function showActivity() {
+        activityIndicator.classList.add("active");
+      }
+      
+      // Hide activity indicator
+      function hideActivity() {
+        activityIndicator.classList.remove("active");
+      }
+      
+      // Copy channel name to clipboard
+      copyChannelBtn.addEventListener("click", async () => {
+        try {
+          // Use Figma's clipboard API via parent.postMessage
+          parent.postMessage({
+            pluginMessage: {
+              type: "copy-to-clipboard",
+              text: state.channel,
+            },
+          }, "*");
+          
+          // Visual feedback
+          const originalText = copyChannelBtn.textContent;
+          copyChannelBtn.textContent = "Copied!";
+          copyChannelBtn.classList.add("copied");
+          
+          setTimeout(() => {
+            copyChannelBtn.textContent = originalText;
+            copyChannelBtn.classList.remove("copied");
+          }, 2000);
+        } catch (error) {
+          console.error("Failed to copy:", error);
+        }
+      });
+      
+      // Clear history
+      clearHistoryBtn.addEventListener("click", () => {
+        state.commandHistory = [];
+        updateHistoryUI();
+      });
+
       // Listen for messages from the plugin code
       window.onmessage = (event) => {
         const message = event.data.pluginMessage;
@@ -641,10 +942,22 @@
             disconnectButton.click();
             break;
           case "command-result":
+            // Hide activity
+            hideActivity();
+            
+            // Add to history
+            addCommandToHistory(message.command || "Unknown command", true);
+            
             // Forward the result from plugin code back to WebSocket
             sendSuccessResponse(message.id, message.result);
             break;
           case "command-error":
+            // Hide activity
+            hideActivity();
+            
+            // Add to history
+            addCommandToHistory(message.command || "Unknown command", false, message.error);
+            
             // Forward the error from plugin code back to WebSocket
             sendErrorResponse(message.id, message.error);
             break;

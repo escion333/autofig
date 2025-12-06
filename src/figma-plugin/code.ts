@@ -36,6 +36,7 @@ figma.ui.onmessage = async (msg: {
   params?: unknown;
   id?: string;
   message?: string;
+  text?: string;
   serverPort?: number;
 }) => {
   switch (msg.type) {
@@ -62,15 +63,24 @@ figma.ui.onmessage = async (msg: {
           figma.ui.postMessage({
             type: 'command-result',
             id: msg.id,
+            command: msg.command,
             result,
           });
         } catch (error) {
           figma.ui.postMessage({
             type: 'command-error',
             id: msg.id,
+            command: msg.command,
             error: error instanceof Error ? error.message : 'Error executing command',
           });
         }
+      }
+      break;
+
+    case 'copy-to-clipboard':
+      // Copy text to clipboard using Figma's notify (workaround since direct clipboard access isn't available)
+      if (msg.text) {
+        figma.notify(`Channel copied: ${msg.text}`);
       }
       break;
   }
