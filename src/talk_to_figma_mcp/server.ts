@@ -141,6 +141,114 @@ const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
 
+// ============================================================================
+// Common Zod Schemas (DRY - Don't Repeat Yourself)
+// ============================================================================
+
+/**
+ * RGBA color schema - used across 17+ tool definitions
+ * Components: r (red), g (green), b (blue), a (alpha/opacity)
+ * All values are 0-1 range for Figma compatibility
+ */
+const rgbaSchema = z.object({
+  r: z.number().min(0).max(1).describe("Red component (0-1)"),
+  g: z.number().min(0).max(1).describe("Green component (0-1)"),
+  b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+  a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
+});
+
+/**
+ * Helper to create optional RGBA schema with custom description
+ */
+const optionalRgbaSchema = (description: string) => 
+  rgbaSchema.optional().describe(description);
+
+// ============================================================================
+// Response Formatting Helpers
+// ============================================================================
+//
+// These helpers standardize response formatting across all 101 tool definitions.
+// 
+// REFACTORING PATTERN (for future work):
+//
+// Before (15 lines):
+//   try {
+//     const result = await sendCommandToFigma("command_name", params);
+//     return {
+//       content: [{
+//         type: "text",
+//         text: JSON.stringify(result)
+//       }]
+//     };
+//   } catch (error) {
+//     return {
+//       content: [{
+//         type: "text",
+//         text: `Error doing thing: ${error instanceof Error ? error.message : String(error)}`
+//       }]
+//     };
+//   }
+//
+// After (3 lines):
+//   try {
+//     const result = await sendCommandToFigma("command_name", params);
+//     return formatJsonResponse(result);
+//   } catch (error) {
+//     return formatErrorResponse("doing thing", error);
+//   }
+//
+// Examples of completed refactoring: get_document_info, get_selection, read_my_design
+// Remaining: 98 tools can be refactored incrementally (each is independent, low risk)
+//
+// ============================================================================
+
+/**
+ * Format a successful tool response with JSON data
+ */
+function formatJsonResponse(data: unknown) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(data)
+      }
+    ]
+  };
+}
+
+/**
+ * Format a successful tool response with a custom message
+ */
+function formatTextResponse(message: string) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: message
+      }
+    ]
+  };
+}
+
+/**
+ * Format an error response
+ */
+function formatErrorResponse(commandName: string, error: unknown) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Error ${commandName}: ${errorMessage}`
+      }
+    ]
+  };
+}
+
+// ============================================================================
+// Tool Definitions
+// ============================================================================
+
 // Document Info Tool
 server.tool(
   "get_document_info",
@@ -149,24 +257,9 @@ server.tool(
   async () => {
     try {
       const result = await sendCommandToFigma("get_document_info");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting document info", error);
     }
   }
 );
@@ -179,24 +272,9 @@ server.tool(
   async () => {
     try {
       const result = await sendCommandToFigma("get_selection");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting selection: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting selection", error);
     }
   }
 );
@@ -209,24 +287,9 @@ server.tool(
   async () => {
     try {
       const result = await sendCommandToFigma("read_my_design", {});
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting node info", error);
     }
   }
 );
@@ -362,34 +425,8 @@ server.tool(
       .string()
       .optional()
       .describe("Optional parent node ID to append the frame to"),
-    fillColor: z
-      .object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Alpha component (0-1)"),
-      })
-      .optional()
-      .describe("Fill color in RGBA format"),
-    strokeColor: z
-      .object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Alpha component (0-1)"),
-      })
-      .optional()
-      .describe("Stroke color in RGBA format"),
+    fillColor: optionalRgbaSchema("Fill color in RGBA format"),
+    strokeColor: optionalRgbaSchema("Stroke color in RGBA format"),
     strokeWeight: z.number().positive().optional().describe("Stroke weight"),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
     layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children"),
@@ -498,20 +535,7 @@ server.tool(
       .string()
       .optional()
       .describe("Font style (e.g., 'Regular', 'Bold', 'Italic', 'Medium'). If not provided, derived from fontWeight"),
-    fontColor: z
-      .object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Alpha component (0-1)"),
-      })
-      .optional()
-      .describe("Font color in RGBA format"),
+    fontColor: optionalRgbaSchema("Font color in RGBA format"),
     name: z
       .string()
       .optional()
@@ -572,34 +596,8 @@ server.tool(
       .string()
       .optional()
       .describe("Optional parent node ID to append the ellipse to"),
-    fillColor: z
-      .object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Alpha component (0-1)"),
-      })
-      .optional()
-      .describe("Fill color in RGBA format"),
-    strokeColor: z
-      .object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .describe("Alpha component (0-1)"),
-      })
-      .optional()
-      .describe("Stroke color in RGBA format"),
+    fillColor: optionalRgbaSchema("Fill color in RGBA format"),
+    strokeColor: optionalRgbaSchema("Stroke color in RGBA format"),
     strokeWeight: z.number().positive().optional().describe("Stroke weight"),
   },
   async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
@@ -1292,12 +1290,7 @@ server.tool(
     name: z.string().describe("Name of the variable (e.g., 'primary/500', 'spacing/sm')"),
     resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Type of the variable: COLOR for colors, FLOAT for numbers, STRING for text, BOOLEAN for true/false"),
     value: z.union([
-      z.object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
-      }),
+      rgbaSchema,
       z.number(),
       z.string(),
       z.boolean(),
@@ -2536,12 +2529,7 @@ server.tool(
   "Create a reusable color style for fills and strokes. Shows notification on creation. Returns: {id, name, color}. Example: create_paint_style(name='Primary/500', color={r:0.2, g:0.5, b:1, a:1}). Use for design system colors. Related: apply_paint_style.",
   {
     name: z.string().describe("Name for the paint style (e.g., 'Primary/500', 'Background/Light')"),
-    color: z.object({
-      r: z.number().min(0).max(1).describe("Red component (0-1)"),
-      g: z.number().min(0).max(1).describe("Green component (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
-    }).describe("RGBA color values (each component 0-1)"),
+    color: rgbaSchema.describe("RGBA color values (each component 0-1)"),
   },
   async ({ name, color }: any) => {
     try {
@@ -2584,12 +2572,7 @@ server.tool(
   {
     styleId: z.string().describe("The ID of the paint style to update"),
     name: z.string().optional().describe("New name for the paint style"),
-    color: z.object({
-      r: z.number().min(0).max(1).describe("Red component (0-1)"),
-      g: z.number().min(0).max(1).describe("Green component (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
-    }).optional().describe("New RGBA color values"),
+    color: optionalRgbaSchema("New RGBA color values"),
   },
   async ({ styleId, name, color }: any) => {
     try {
@@ -2713,12 +2696,7 @@ server.tool(
     gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).describe("Type of gradient"),
     stops: z.array(z.object({
       position: z.number().min(0).max(1).describe("Position of the stop (0-1)"),
-      color: z.object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 1)"),
-      }).describe("Color at this stop"),
+      color: rgbaSchema.describe("Color at this stop"),
     })).min(2).describe("Array of gradient color stops (minimum 2 stops required)"),
     angle: z.number().optional().describe("Rotation angle in degrees for linear gradients (default: 0)"),
   },
@@ -2806,12 +2784,7 @@ server.tool(
     name: z.string().describe("Name for the effect style (e.g., 'Shadow/Small', 'Blur/Background')"),
     effects: z.array(z.object({
       type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Type of effect"),
-      color: z.object({
-        r: z.number().min(0).max(1).describe("Red (0-1)"),
-        g: z.number().min(0).max(1).describe("Green (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
-      }).optional().describe("Color for shadow effects"),
+      color: optionalRgbaSchema("Color for shadow effects"),
       offsetX: z.number().optional().describe("Horizontal offset for shadows"),
       offsetY: z.number().optional().describe("Vertical offset for shadows"),
       radius: z.number().min(0).optional().describe("Blur radius"),
@@ -2927,12 +2900,7 @@ server.tool(
     nodeId: z.string().describe("The ID of the node to apply effects to"),
     effects: z.array(z.object({
       type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Type of effect"),
-      color: z.object({
-        r: z.number().min(0).max(1).describe("Red (0-1)"),
-        g: z.number().min(0).max(1).describe("Green (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
-      }).optional().describe("Color for shadow effects"),
+      color: optionalRgbaSchema("Color for shadow effects"),
       offsetX: z.number().optional().describe("Horizontal offset for shadows"),
       offsetY: z.number().optional().describe("Vertical offset for shadows"),
       radius: z.number().min(0).optional().describe("Blur radius"),
@@ -2974,12 +2942,7 @@ server.tool(
   "Add a drop shadow (outer shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_drop_shadow(nodeId='123:1', color={r:0,g:0,b:0,a:0.25}, offsetY=4, radius=8). Use for elevation effects.",
   {
     nodeId: z.string().describe("The ID of the node to add the shadow to"),
-    color: z.object({
-      r: z.number().min(0).max(1).describe("Red (0-1)"),
-      g: z.number().min(0).max(1).describe("Green (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 0.25)"),
-    }).describe("Shadow color"),
+    color: rgbaSchema.describe("Shadow color"),
     offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
     offsetY: z.number().optional().describe("Vertical offset in pixels (default: 4)"),
     radius: z.number().min(0).optional().describe("Blur radius in pixels (default: 4)"),
@@ -3025,12 +2988,7 @@ server.tool(
   "Add an inner shadow (inset shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_inner_shadow(nodeId='123:1', color:{r:0,g:0,b:0,a:0.15}, offsetY:2, radius=4). Use for pressed/inset states.",
   {
     nodeId: z.string().describe("The ID of the node to add the inner shadow to"),
-    color: z.object({
-      r: z.number().min(0).max(1).describe("Red (0-1)"),
-      g: z.number().min(0).max(1).describe("Green (0-1)"),
-      b: z.number().min(0).max(1).describe("Blue (0-1)"),
-      a: z.number().min(0).max(1).optional().describe("Alpha/opacity (0-1, default: 0.25)"),
-    }).describe("Shadow color"),
+    color: rgbaSchema.describe("Shadow color"),
     offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
     offsetY: z.number().optional().describe("Vertical offset in pixels (default: 2)"),
     radius: z.number().min(0).optional().describe("Blur radius in pixels (default: 4)"),
@@ -3274,12 +3232,7 @@ server.tool(
       pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Type of grid: COLUMNS, ROWS, or GRID (uniform)"),
       sectionSize: z.number().optional().describe("Size of each section (for GRID pattern)"),
       visible: z.boolean().optional().describe("Whether the grid is visible (default: true)"),
-      color: z.object({
-        r: z.number().min(0).max(1).describe("Red (0-1)"),
-        g: z.number().min(0).max(1).describe("Green (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha (0-1)"),
-      }).optional().describe("Grid color"),
+      color: optionalRgbaSchema("Grid color"),
       alignment: z.enum(["MIN", "MAX", "CENTER", "STRETCH"]).optional().describe("Alignment for COLUMNS/ROWS"),
       gutterSize: z.number().optional().describe("Gutter size in pixels (for COLUMNS/ROWS)"),
       count: z.number().optional().describe("Number of columns/rows"),
@@ -3394,12 +3347,7 @@ server.tool(
       pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Type of grid"),
       sectionSize: z.number().optional().describe("Size of each section"),
       visible: z.boolean().optional().describe("Whether visible"),
-      color: z.object({
-        r: z.number().min(0).max(1),
-        g: z.number().min(0).max(1),
-        b: z.number().min(0).max(1),
-        a: z.number().min(0).max(1).optional(),
-      }).optional().describe("Grid color"),
+      color: optionalRgbaSchema("Grid color"),
       alignment: z.enum(["MIN", "MAX", "CENTER", "STRETCH"]).optional(),
       gutterSize: z.number().optional(),
       count: z.number().optional(),
