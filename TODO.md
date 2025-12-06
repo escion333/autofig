@@ -11,7 +11,7 @@
 | **MCP Tools** | 101 |
 | **Handler Modules** | 17 |
 | **Test Coverage** | 123 tests (Variables, Components, Text, Styling, Layout) |
-| **Version** | 0.3.5 |
+| **Version** | 0.4.0 |
 
 ---
 
@@ -463,7 +463,7 @@ Example: create_ellipse(x=100, y=100, width=80, height=80, fillColor={r:0.2,g:0.
 - Test coverage: 50 → 123 tests (+146%)
 - All tests passing, build successful
 
-**Next Focus:** Additional feature requests or optimizations as needed
+**Status:** ✅ All core priorities complete - v0.4.0 released
 
 **Current Status Summary:**
 - ✅ Priority 1: 100% Complete (all 4 tasks)
@@ -488,11 +488,8 @@ Example: create_ellipse(x=100, y=100, width=80, height=80, fillColor={r:0.2,g:0.
 
 ## 📄 Related Documents
 
-- [Priority 1 Completion Summary](./PRIORITY_1_COMPLETION_SUMMARY.md) - Stability & Reliability work
-- [Priority 2 Completion Summary](./PRIORITY_2_COMPLETION_SUMMARY.md) - UX Improvements work
-- [Priority 3 Completion Summary](./PRIORITY_3_COMPLETION_SUMMARY.md) - Feature Additions work ✨ **NEW**
-- [Tool Descriptions Update](./TOOL_DESCRIPTIONS_UPDATE.md) - Enhanced tool descriptions progress
-- [Phase 2 Completion Summary](./PHASE_2_COMPLETION_SUMMARY.md) - Overall Phase 2 achievements
+- [Quick Start Guide](./QUICK_START.md) - Get started in 3 minutes
+- [Changelog](./CHANGELOG.md) - Version history
 - [Contributing Guide](./CONTRIBUTING.md) - Development patterns and best practices
 
 ---

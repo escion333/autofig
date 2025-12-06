@@ -1,7 +1,7 @@
 {
   "name": "autofig",
   "description": "AutoFig",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
@@ -15,13 +15,15 @@
   "scripts": {
     "start": "bun run dist/server.js",
     "socket": "bun run src/socket.ts",
+    "dev": "node scripts/dev.mjs",
+    "connect": "node scripts/connect.mjs",
     "setup": "./scripts/setup.sh",
     "build": "tsup && npm run build:plugin",
     "build:server": "tsup",
     "build:plugin": "node esbuild.plugin.mjs",
     "build:plugin:watch": "node esbuild.plugin.mjs --watch",
     "build:watch": "tsup --watch",
-    "dev": "bun run build:watch",
+    "dev:server": "bun run build:watch",
     "dev:plugin": "bun run build:plugin:watch",
     "test": "vitest run",
     "test:watch": "vitest",

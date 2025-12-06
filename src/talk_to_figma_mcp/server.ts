@@ -118,6 +118,9 @@ const pendingRequests = new Map<string, {
 // Track which channel each client is in
 let currentChannel: string | null = null;
 
+// Check for channel from environment variable
+const DEFAULT_CHANNEL = process.env.AUTOFIG_CHANNEL || null;
+
 // Reconnection state
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -246,8 +249,170 @@ function formatErrorResponse(commandName: string, error: unknown) {
 }
 
 // ============================================================================
+// Auto-Join Channel Helpers
+// ============================================================================
+
+interface ChannelInfo {
+  name: string;
+  clients: number;
+}
+
+interface StatusResponse {
+  status: string;
+  port: number;
+  timestamp: string;
+  channels: number;
+  totalClients: number;
+  channelDetails: ChannelInfo[];
+}
+
+/**
+ * Get active channels from the WebSocket server's /status endpoint
+ */
+async function getActiveChannels(): Promise<ChannelInfo[]> {
+  try {
+    const port = serverUrl === 'localhost' ? 3055 : 443;
+    const protocol = serverUrl === 'localhost' ? 'http' : 'https';
+    const statusUrl = `${protocol}://${serverUrl}${serverUrl === 'localhost' ? `:${port}` : ''}/status`;
+    
+    const response = await fetch(statusUrl);
+    if (!response.ok) {
+      throw new Error(`Status endpoint returned ${response.status}`);
+    }
+    
+    const data = await response.json() as StatusResponse;
+    return data.channelDetails || [];
+  } catch (error) {
+    logger.warn(`Failed to fetch active channels: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+/**
+ * Attempt to auto-join a channel if exactly one channel is available
+ * Returns the channel name if successful, throws an error otherwise
+ */
+async function autoJoinChannel(): Promise<string> {
+  const channels = await getActiveChannels();
+  
+  if (channels.length === 0) {
+    throw new Error('No active channels found. Please start the Figma plugin first.');
+  }
+  
+  // If environment variable is set, try to join that channel first
+  if (DEFAULT_CHANNEL) {
+    const envChannel = channels.find(c => c.name === DEFAULT_CHANNEL);
+    if (envChannel) {
+      await joinChannelInternal(DEFAULT_CHANNEL);
+      logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
+      return DEFAULT_CHANNEL;
+    }
+  }
+  
+  if (channels.length === 1) {
+    const channelName = channels[0].name;
+    await joinChannelInternal(channelName);
+    logger.info(`Auto-joined channel: ${channelName}`);
+    return channelName;
+  }
+  
+  // Multiple channels available - user needs to choose
+  const channelNames = channels.map(c => c.name).join(', ');
+  throw new Error(`Multiple channels available: ${channelNames}. Please use join_channel tool to specify which channel to join.`);
+}
+
+/**
+ * Internal function to join a channel (used by both auto-join and manual join)
+ */
+async function joinChannelInternal(channelName: string): Promise<void> {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    throw new Error("Not connected to Figma WebSocket server");
+  }
+
+  // Send join command directly without going through sendCommandToFigma
+  // to avoid the channel requirement check
+  return new Promise((resolve, reject) => {
+    const id = uuidv4();
+    const request = {
+      id,
+      type: "join",
+      channel: channelName,
+      message: {
+        id,
+        command: "join",
+        params: { channel: channelName },
+      },
+    };
+
+    const timeout = setTimeout(() => {
+      if (pendingRequests.has(id)) {
+        pendingRequests.delete(id);
+        reject(new Error(`Join channel timed out after 30 seconds`));
+      }
+    }, 30000);
+
+    pendingRequests.set(id, {
+      resolve: (value: unknown) => {
+        currentChannel = channelName;
+        resolve();
+      },
+      reject,
+      timeout,
+      lastActivity: Date.now()
+    });
+
+    logger.info(`Joining channel: ${channelName}`);
+    ws!.send(JSON.stringify(request));
+  });
+}
+
+// ============================================================================
 // Tool Definitions
 // ============================================================================
+
+// Join Channel Tool - MUST be first to enable all other tools
+server.tool(
+  "join_channel",
+  "Join a specific channel to communicate with Figma. Required before using other AutoFig tools unless auto-join succeeds. Get the channel code from the Figma plugin UI.",
+  {
+    channel: z.string().describe("The channel code shown in the Figma plugin (e.g., 'abc123')").default(""),
+  },
+  async ({ channel }: any) => {
+    try {
+      if (!channel) {
+        // If no channel provided, try to auto-detect and show available channels
+        const channels = await getActiveChannels();
+        
+        if (channels.length === 0) {
+          return formatTextResponse(
+            "No active channels found. Please:\n" +
+            "1. Open Figma and run the AutoFig plugin\n" +
+            "2. Copy the channel code from the plugin UI\n" +
+            "3. Call join_channel with that code"
+          );
+        }
+        
+        if (channels.length === 1) {
+          // Auto-join the only available channel
+          await joinChannelInternal(channels[0].name);
+          return formatTextResponse(`Auto-joined the only available channel: ${channels[0].name}`);
+        }
+        
+        // Multiple channels - show the list
+        const channelList = channels.map(c => `  - ${c.name} (${c.clients} client${c.clients !== 1 ? 's' : ''})`).join('\n');
+        return formatTextResponse(
+          `Multiple channels available:\n${channelList}\n\n` +
+          "Please call join_channel with the specific channel code you want to use."
+        );
+      }
+
+      await joinChannelInternal(channel);
+      return formatTextResponse(`Successfully joined channel: ${channel}`);
+    } catch (error) {
+      return formatErrorResponse("joining channel", error);
+    }
+  }
+);
 
 // Document Info Tool
 server.tool(
@@ -4966,12 +5131,22 @@ function connectToFigma(port: number = 3055) {
   logger.info(`Connecting to Figma socket server at ${wsUrl}... (Attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
   ws = new WebSocket(wsUrl);
 
-  ws.on('open', () => {
+  ws.on('open', async () => {
     logger.info('Connected to Figma socket server');
     // Reset reconnection state on successful connection
     reconnectAttempts = 0;
     // Reset channel on new connection
     currentChannel = null;
+    
+    // Auto-join channel from environment variable if set
+    if (DEFAULT_CHANNEL) {
+      try {
+        await joinChannelInternal(DEFAULT_CHANNEL);
+        logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
+      } catch (error) {
+        logger.warn(`Failed to auto-join channel from environment variable: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   });
 
   ws.on("message", (data: any) => {
@@ -5121,29 +5296,18 @@ function cleanupStaleRequests() {
 // Start periodic cleanup of stale requests
 setInterval(cleanupStaleRequests, CLEANUP_INTERVAL);
 
-// Function to join a channel
+// Function to join a channel (wrapper for joinChannelInternal)
 async function joinChannel(channelName: string): Promise<void> {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    throw new Error("Not connected to Figma");
-  }
-
-  try {
-    await sendCommandToFigma("join", { channel: channelName });
-    currentChannel = channelName;
-    logger.info(`Joined channel: ${channelName}`);
-  } catch (error) {
-    logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
-    throw error;
-  }
+  return joinChannelInternal(channelName);
 }
 
-// Function to send commands to Figma
+// Function to send commands to Figma with auto-join support
 function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
   timeoutMs?: number
 ): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // If not connected, try to connect first
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       connectToFigma();
@@ -5154,8 +5318,40 @@ function sendCommandToFigma(
     // Check if we need a channel for this command
     const requiresChannel = command !== "join";
     if (requiresChannel && !currentChannel) {
-      reject(new Error("Must join a channel before sending commands"));
-      return;
+      // First, try environment variable if set
+      if (DEFAULT_CHANNEL) {
+        try {
+          await joinChannelInternal(DEFAULT_CHANNEL);
+          logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
+        } catch (envJoinError) {
+          logger.warn(`Failed to join channel from environment variable: ${envJoinError instanceof Error ? envJoinError.message : String(envJoinError)}`);
+          // Fall through to auto-join logic
+        }
+      }
+      
+      // If still no channel, try to auto-join if only one channel is available
+      if (!currentChannel) {
+        try {
+          logger.info("No channel joined. Attempting auto-join...");
+          await autoJoinChannel();
+          logger.info(`Auto-join successful. Proceeding with command: ${command}`);
+        } catch (autoJoinError) {
+          const channels = await getActiveChannels();
+          let errorMessage = "Must join a channel before sending commands. ";
+          
+          if (channels.length === 0) {
+            errorMessage += "No active channels found. Please start the Figma plugin.";
+          } else if (channels.length > 1) {
+            const channelNames = channels.map(c => c.name).join(', ');
+            errorMessage += `Multiple channels available: ${channelNames}. Use join_channel to specify which one, or set AUTOFIG_CHANNEL environment variable.`;
+          } else {
+            errorMessage += autoJoinError instanceof Error ? autoJoinError.message : String(autoJoinError);
+          }
+          
+          reject(new Error(errorMessage));
+          return;
+        }
+      }
     }
 
     // Use command-specific timeout if not explicitly provided
@@ -5201,54 +5397,6 @@ function sendCommandToFigma(
     ws.send(JSON.stringify(request));
   });
 }
-
-// Update the join_channel tool
-server.tool(
-  "join_channel",
-  "Join a specific channel to communicate with Figma",
-  {
-    channel: z.string().describe("The name of the channel to join").default(""),
-  },
-  async ({ channel }: any) => {
-    try {
-      if (!channel) {
-        // If no channel provided, ask the user for input
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Please provide a channel name to join:",
-            },
-          ],
-          followUp: {
-            tool: "join_channel",
-            description: "Join the specified channel",
-          },
-        };
-      }
-
-      await joinChannel(channel);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully joined channel: ${channel}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error joining channel: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Start the server
 async function main() {

@@ -347,7 +347,7 @@
               >Github</a
             >
           </p>
-          <p>Version: 0.3.5</p>
+          <p>Version: 0.4.0</p>
 
           <h2>How to Use</h2>
           <ol>
@@ -372,6 +372,8 @@
         manualDisconnect: false, // Track if user manually disconnected
         commandHistory: [],
         lastCommandTime: null,
+        serverCheckInterval: null,
+        hasTriedAutoConnect: false,
       };
 
       // Reconnection configuration
@@ -422,11 +424,33 @@
         portInput.disabled = isConnected;
       }
 
+      // Check if server is available
+      async function checkServerAvailability(port) {
+        try {
+          const response = await fetch(`http://localhost:${port}/health`);
+          const data = await response.json();
+          return data.status === "ok";
+        } catch (error) {
+          return false;
+        }
+      }
+
       // Connect to WebSocket server
       async function connectToServer(port) {
         try {
           if (state.connected && state.socket) {
             updateConnectionStatus(true, "Already connected to server");
+            return;
+          }
+
+          // Check if server is running first
+          const serverAvailable = await checkServerAvailability(port);
+          if (!serverAvailable) {
+            updateConnectionStatus(
+              false,
+              `Server not available on port ${port}. Start the server with: bun dev`
+            );
+            connectionStatus.className = "status disconnected";
             return;
           }
 
@@ -945,6 +969,32 @@
         updateHistoryUI();
       });
 
+      // Auto-connect on plugin startup
+      async function attemptAutoConnect() {
+        if (state.hasTriedAutoConnect || state.connected) {
+          return;
+        }
+        
+        state.hasTriedAutoConnect = true;
+        
+        // Wait a bit for the UI to render
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const port = parseInt(portInput.value, 10) || 3055;
+        const serverAvailable = await checkServerAvailability(port);
+        
+        if (serverAvailable) {
+          console.log(`✅ Server detected on port ${port}, auto-connecting...`);
+          connectButton.click();
+        } else {
+          console.log(`⚠️  Server not detected on port ${port}`);
+          updateConnectionStatus(
+            false,
+            `Server not running. Start with: bun dev`
+          );
+        }
+      }
+
       // Listen for messages from the plugin code
       window.onmessage = (event) => {
         const message = event.data.pluginMessage;
@@ -957,7 +1007,7 @@
             updateConnectionStatus(message.connected, message.message);
             break;
           case "auto-connect":
-            connectButton.click();
+            attemptAutoConnect();
             break;
           case "auto-disconnect":
             disconnectButton.click();
@@ -990,6 +1040,9 @@
             break;
         }
       };
+      
+      // Attempt auto-connect when page loads
+      attemptAutoConnect();
     </script>
   </body>
 </html>

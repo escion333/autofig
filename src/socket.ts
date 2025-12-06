@@ -41,6 +41,8 @@ const server = Bun.serve({
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
   fetch(req: Request, server: Server<unknown>) {
+    const url = new URL(req.url);
+
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -50,6 +52,48 @@ const server = Bun.serve({
           "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
       });
+    }
+
+    // Handle status endpoint
+    if (url.pathname === "/status") {
+      const totalClients = Array.from(channels.values()).reduce(
+        (sum, clients) => sum + clients.size,
+        0
+      );
+      const channelList = Array.from(channels.entries()).map(([name, clients]) => ({
+        name,
+        clients: clients.size,
+      }));
+
+      return new Response(
+        JSON.stringify({
+          status: "running",
+          port: 3055,
+          timestamp: new Date().toISOString(),
+          channels: channelList.length,
+          totalClients,
+          channelDetails: channelList,
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+
+    // Handle health check endpoint
+    if (url.pathname === "/health") {
+      return new Response(
+        JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
     }
 
     // Handle WebSocket upgrade
@@ -65,7 +109,7 @@ const server = Bun.serve({
     }
 
     // Return response for non-WebSocket requests
-    return new Response("WebSocket server running", {
+    return new Response("AutoFig WebSocket Server - Use /status or /health for info", {
       headers: {
         "Access-Control-Allow-Origin": "*",
       },

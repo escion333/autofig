@@ -1,6 +1,13 @@
 # AutoFig
 
-AutoFig is a Model Context Protocol (MCP) server that enables AI agents in Cursor IDE to read, create, and modify Figma designs programmatically. It bridges the gap between AI-assisted coding and visual design.
+> **Model Context Protocol (MCP) server for Figma** - Bridge AI agents in Cursor IDE with Figma designs
+
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](./tests)
+[![Tools](https://img.shields.io/badge/MCP%20tools-101-purple.svg)](#mcp-tools)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
+AutoFig enables AI agents in Cursor IDE to read, create, and modify Figma designs programmatically. Ask your AI to design, and watch it happen in real-time!
 
 ## Project Structure
 
@@ -12,25 +19,38 @@ AutoFig is a Model Context Protocol (MCP) server that enables AI agents in Curso
 
 ## Get Started
 
-1. Install Bun if you haven't already:
+> **New User?** See [QUICK_START.md](./QUICK_START.md) for a complete walkthrough!
+
+### Quick Setup (One-Time)
+
+1. **Install Bun** if you haven't already:
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
 
-2. Run setup, this will also install MCP in your Cursor's active project
+2. **Install dependencies and configure Cursor:**
 
 ```bash
+bun install
 bun setup
 ```
 
-3. Start the Websocket server
+3. **Install the Figma plugin:**
+   - In Figma: `Plugins → Development → Import plugin from manifest`
+   - Select: `src/cursor_mcp_plugin/manifest.json`
+
+### Daily Usage (Every Session)
+
+Start the development server:
 
 ```bash
-bun socket
+bun dev
 ```
 
-4. Install the Figma plugin [locally](#figma-plugin)
+Then open the AutoFig plugin in Figma - it will auto-connect! ✨
+
+> **Tip:** Use `bun connect` to check connection status anytime
 
 ## Features
 
@@ -110,11 +130,19 @@ bun socket
 
 ## Usage
 
-1. Start the WebSocket server
-2. Install the MCP server in Cursor
-3. Open Figma and run the Cursor MCP Plugin
-4. Connect the plugin to the WebSocket server by joining a channel using `join_channel`
-5. Use Cursor to communicate with Figma using the MCP tools
+Once set up, using AutoFig is simple:
+
+1. **Start the server** - `bun dev`
+2. **Open Figma** and run the AutoFig plugin (auto-connects!)
+3. **Use Cursor** - Ask the AI to interact with your designs
+
+**Example prompts:**
+- "What's currently selected in Figma?"
+- "Create a blue rectangle at position 100, 100"
+- "Change all text that says 'Hello' to 'Welcome'"
+- "Export the selected frame as PNG"
+
+> 💡 **Tip:** Run `bun connect` anytime to check connection status
 
 ## MCP Tools
 
