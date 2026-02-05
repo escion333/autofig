@@ -4615,8 +4615,14 @@ server.tool(
         };
       }
 
+      const mappedConnections = connections.map((c: any) => ({
+        fromNodeId: c.startNodeId,
+        toNodeId: c.endNodeId,
+        label: c.text,
+      }));
+
       const result = await sendCommandToFigma("create_connections", {
-        connections
+        connections: mappedConnections
       });
 
       return {

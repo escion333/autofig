@@ -370,3 +370,4 @@ cat ~/.cursor/mcp.json
 *Last updated: December 6, 2024 - v0.4.0*
 
 
+

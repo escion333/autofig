@@ -313,7 +313,7 @@ The node may have been deleted or the ID is invalid.
     }
     const newPage = figma.createPage();
     newPage.name = name;
-    figma.currentPage = newPage;
+    await figma.setCurrentPageAsync(newPage);
     figma.notify(`\u2705 Created page "${name}"`);
     return {
       id: newPage.id,
@@ -343,7 +343,7 @@ The page may have been deleted or the ID is invalid.
 \u{1F4A1} Tip: Use get_pages to get valid page IDs.`
       );
     }
-    figma.currentPage = page;
+    await figma.setCurrentPageAsync(page);
     figma.notify(`\u2705 Switched to page "${page.name}"`);
     return {
       id: page.id,
@@ -382,7 +382,7 @@ The page may have been deleted or the ID is invalid.
     if (figma.currentPage.id === pageId) {
       const otherPage = figma.root.children.find((p) => p.id !== pageId);
       if (otherPage) {
-        figma.currentPage = otherPage;
+        await figma.setCurrentPageAsync(otherPage);
       }
     }
     page.remove();
@@ -2081,6 +2081,12 @@ The node may have been deleted or the ID is invalid.
   __name(unbindVariable, "unbindVariable");
   function convertToFigmaValue(value, resolvedType) {
     var _a;
+    if (typeof value === "string" && (resolvedType === "COLOR" || resolvedType === "FLOAT")) {
+      try {
+        value = JSON.parse(value);
+      } catch (_e) {
+      }
+    }
     if (resolvedType === "COLOR") {
       if (typeof value === "object" && "r" in value) {
         return {
@@ -4899,22 +4905,21 @@ The node may have been deleted or the ID is invalid.
         break;
       case "execute-command":
         if (msg.command && msg.id) {
-          try {
-            const result = await handleCommand(msg.command, msg.params);
+          handleCommand(msg.command, msg.params).then((result) => {
             figma.ui.postMessage({
               type: "command-result",
               id: msg.id,
               command: msg.command,
               result
             });
-          } catch (error) {
+          }).catch((error) => {
             figma.ui.postMessage({
               type: "command-error",
               id: msg.id,
               command: msg.command,
               error: error instanceof Error ? error.message : "Error executing command"
             });
-          }
+          });
         }
         break;
       case "copy-to-clipboard":

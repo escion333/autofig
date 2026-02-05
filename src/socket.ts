@@ -223,6 +223,26 @@ const server = Bun.serve({
             console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
           }
         }
+
+        // Handle progress updates - relay to all other clients in the channel
+        if (data.type === "progress_update") {
+          const channelName = data.channel;
+          if (!channelName || typeof channelName !== "string") return;
+
+          const channelClients = channels.get(channelName);
+          if (!channelClients || !channelClients.has(ws)) return;
+
+          channelClients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: "progress_update",
+                message: data.message,
+                id: data.id,
+                channel: channelName
+              }));
+            }
+          });
+        }
       } catch (err) {
         console.error("Error handling message:", err);
       }

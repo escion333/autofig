@@ -442,6 +442,10 @@ function convertToFigmaValue(
   value: VariableValueInput,
   resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN'
 ): RGB | RGBA | number | string | boolean {
+  // Handle string values that may have been serialized during WebSocket transport
+  if (typeof value === 'string' && (resolvedType === 'COLOR' || resolvedType === 'FLOAT')) {
+    try { value = JSON.parse(value) as VariableValueInput; } catch (_e) { /* not JSON */ }
+  }
   if (resolvedType === 'COLOR') {
     if (typeof value === 'object' && 'r' in value) {
       return {

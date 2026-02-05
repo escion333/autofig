@@ -56,24 +56,26 @@ figma.ui.onmessage = async (msg: {
 
     case 'execute-command':
       // Execute commands received from UI (which gets them from WebSocket)
+      // Fire off without await so multiple commands can be in-flight simultaneously.
+      // Results still route back by msg.id, so each agent gets its own response.
       if (msg.command && msg.id) {
-        try {
-          const result = await handleCommand(msg.command, msg.params as CommandParams[typeof msg.command]);
-          // Send result back to UI
-          figma.ui.postMessage({
-            type: 'command-result',
-            id: msg.id,
-            command: msg.command,
-            result,
+        handleCommand(msg.command, msg.params as CommandParams[typeof msg.command])
+          .then((result) => {
+            figma.ui.postMessage({
+              type: 'command-result',
+              id: msg.id,
+              command: msg.command,
+              result,
+            });
+          })
+          .catch((error) => {
+            figma.ui.postMessage({
+              type: 'command-error',
+              id: msg.id,
+              command: msg.command,
+              error: error instanceof Error ? error.message : 'Error executing command',
+            });
           });
-        } catch (error) {
-          figma.ui.postMessage({
-            type: 'command-error',
-            id: msg.id,
-            command: msg.command,
-            error: error instanceof Error ? error.message : 'Error executing command',
-          });
-        }
       }
       break;
 

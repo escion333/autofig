@@ -291,7 +291,7 @@ export async function createPage(params: CommandParams['create_page']): Promise<
   newPage.name = name;
 
   // Switch to the new page
-  figma.currentPage = newPage;
+  await figma.setCurrentPageAsync(newPage);
 
   figma.notify(`✅ Created page "${name}"`);
 
@@ -331,7 +331,7 @@ export async function switchPage(params: CommandParams['switch_page']): Promise<
     );
   }
 
-  figma.currentPage = page as PageNode;
+  await figma.setCurrentPageAsync(page as PageNode);
   figma.notify(`✅ Switched to page "${page.name}"`);
 
   return {
@@ -384,7 +384,7 @@ export async function deletePage(params: CommandParams['delete_page']): Promise<
   if (figma.currentPage.id === pageId) {
     const otherPage = figma.root.children.find((p) => p.id !== pageId);
     if (otherPage) {
-      figma.currentPage = otherPage as PageNode;
+      await figma.setCurrentPageAsync(otherPage as PageNode);
     }
   }
 
