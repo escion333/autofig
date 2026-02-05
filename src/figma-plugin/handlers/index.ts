@@ -53,6 +53,8 @@ import {
   createVariableCollection,
   createVariable,
   setVariableValue,
+  createMultipleVariables,
+  setMultipleVariableValues,
   deleteVariable,
   getBoundVariables,
   bindVariable,
@@ -252,6 +254,10 @@ export async function handleCommand(
       return await createVariable(params as CommandParams['create_variable']);
     case 'set_variable_value':
       return await setVariableValue(params as CommandParams['set_variable_value']);
+    case 'create_multiple_variables':
+      return await createMultipleVariables(params as CommandParams['create_multiple_variables']);
+    case 'set_multiple_variable_values':
+      return await setMultipleVariableValues(params as CommandParams['set_multiple_variable_values']);
     case 'delete_variable':
       return await deleteVariable(params as CommandParams['delete_variable']);
     case 'get_bound_variables':

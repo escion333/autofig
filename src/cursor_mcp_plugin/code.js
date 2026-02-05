@@ -2079,6 +2079,180 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(unbindVariable, "unbindVariable");
+  async function createMultipleVariables(params) {
+    const { collectionId, variables } = params;
+    const commandId = generateCommandId();
+    if (!collectionId) {
+      throw new Error("Missing collectionId parameter");
+    }
+    if (!variables || !Array.isArray(variables) || variables.length === 0) {
+      throw new Error("Missing or invalid variables parameter");
+    }
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Collection not found: ${collectionId}`);
+    }
+    sendProgressUpdate(
+      commandId,
+      "create_multiple_variables",
+      "started",
+      0,
+      variables.length,
+      0,
+      `Starting to create ${variables.length} variables in collection "${collection.name}"`,
+      { totalVariables: variables.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < variables.length; i += CHUNK_SIZE) {
+      chunks.push(variables.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "create_multiple_variables",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        variables.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ name, resolvedType, value }) => {
+        try {
+          const variable = figma.variables.createVariable(name, collection, resolvedType);
+          if (value !== void 0) {
+            const figmaValue = convertToFigmaValue(value, resolvedType);
+            variable.setValueForMode(collection.defaultModeId, figmaValue);
+          }
+          return { success: true, name, variableId: variable.id };
+        } catch (error) {
+          return { success: false, name, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "create_multiple_variables",
+      "completed",
+      100,
+      variables.length,
+      successCount + failureCount,
+      `Variable creation complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Created ${successCount} variables` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalVariables: variables.length,
+      results,
+      commandId
+    };
+  }
+  __name(createMultipleVariables, "createMultipleVariables");
+  async function setMultipleVariableValues(params) {
+    const { updates } = params;
+    const commandId = generateCommandId();
+    if (!updates || !Array.isArray(updates) || updates.length === 0) {
+      throw new Error("Missing or invalid updates parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_variable_values",
+      "started",
+      0,
+      updates.length,
+      0,
+      `Starting to update ${updates.length} variable values`,
+      { totalUpdates: updates.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+      chunks.push(updates.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "set_multiple_variable_values",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        updates.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ variableId, modeId, value }) => {
+        try {
+          const variable = await figma.variables.getVariableByIdAsync(variableId);
+          if (!variable) {
+            return { success: false, variableId, modeId, error: `Variable not found: ${variableId}` };
+          }
+          const figmaValue = convertToFigmaValue(value, variable.resolvedType);
+          variable.setValueForMode(modeId, figmaValue);
+          return { success: true, variableId, modeId };
+        } catch (error) {
+          return { success: false, variableId, modeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_variable_values",
+      "completed",
+      100,
+      updates.length,
+      successCount + failureCount,
+      `Variable value updates complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Updated ${successCount} variable values` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalUpdates: updates.length,
+      results,
+      commandId
+    };
+  }
+  __name(setMultipleVariableValues, "setMultipleVariableValues");
   function convertToFigmaValue(value, resolvedType) {
     var _a;
     if (typeof value === "string" && (resolvedType === "COLOR" || resolvedType === "FLOAT")) {
@@ -4728,6 +4902,10 @@ The node may have been deleted or the ID is invalid.
         return await createVariable(params);
       case "set_variable_value":
         return await setVariableValue(params);
+      case "create_multiple_variables":
+        return await createMultipleVariables(params);
+      case "set_multiple_variable_values":
+        return await setMultipleVariableValues(params);
       case "delete_variable":
         return await deleteVariable(params);
       case "get_bound_variables":

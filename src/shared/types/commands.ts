@@ -57,6 +57,8 @@ export type FigmaCommand =
   | 'create_variable_collection'
   | 'create_variable'
   | 'set_variable_value'
+  | 'create_multiple_variables'
+  | 'set_multiple_variable_values'
   | 'delete_variable'
   | 'get_bound_variables'
   | 'bind_variable'
@@ -188,6 +190,21 @@ export interface CommandParams {
     variableId: string;
     modeId: string;
     value: VariableValueInput;
+  };
+  create_multiple_variables: {
+    collectionId: string;
+    variables: Array<{
+      name: string;
+      resolvedType: 'COLOR' | 'FLOAT' | 'STRING' | 'BOOLEAN';
+      value?: VariableValueInput;
+    }>;
+  };
+  set_multiple_variable_values: {
+    updates: Array<{
+      variableId: string;
+      modeId: string;
+      value: VariableValueInput;
+    }>;
   };
   delete_variable: {
     variableId: string;

@@ -92,6 +92,10 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   'set_multiple_annotations': 90000,   // 90 seconds - batch annotations
   'get_annotations': 60000,            // 1 minute - reading many annotations
   
+  // Variable batch operations
+  'create_multiple_variables': 90000,        // 90 seconds - batch variable creation
+  'set_multiple_variable_values': 90000,     // 90 seconds - batch variable value updates
+
   // Node scanning operations
   'scan_nodes_by_types': 90000,        // 90 seconds - scanning large subtrees
   
@@ -1521,6 +1525,87 @@ server.tool(
           {
             type: "text",
             text: `Error setting variable value: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Multiple Variables Tool (batch)
+server.tool(
+  "create_multiple_variables",
+  "Create multiple variables (design tokens) in a single collection in one batch call. Much faster than calling create_variable repeatedly. Supports mixed types (COLOR, FLOAT, STRING, BOOLEAN) with optional initial values. Returns: {success, successCount, failureCount, results: Array<{name, variableId?, error?}>}. Example: create_multiple_variables(collectionId='123:45', variables=[{name:'primary/500', resolvedType:'COLOR', value:{r:0.2,g:0.6,b:1}}, {name:'spacing/sm', resolvedType:'FLOAT', value:8}]). Related: create_variable, set_multiple_variable_values",
+  {
+    collectionId: z.string().describe("The ID of the collection to add the variables to"),
+    variables: z.array(z.object({
+      name: z.string().describe("Name of the variable (e.g., 'primary/500', 'spacing/sm')"),
+      resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Type of the variable"),
+      value: z.union([
+        rgbaSchema,
+        z.number(),
+        z.string(),
+        z.boolean(),
+      ]).optional().describe("Initial value for the default mode. Type must match resolvedType."),
+    })).min(1).describe("Array of variables to create"),
+  },
+  async ({ collectionId, variables }: { collectionId: string; variables: Array<{ name: string; resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"; value?: unknown }> }) => {
+    try {
+      const result = await sendCommandToFigma("create_multiple_variables", { collectionId, variables });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating multiple variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Multiple Variable Values Tool (batch)
+server.tool(
+  "set_multiple_variable_values",
+  "Set values for multiple variables across modes in one batch call. Much faster than calling set_variable_value repeatedly (e.g., setting light and dark mode values for 11 colors = 22 updates in one call instead of 22 separate calls). Returns: {success, successCount, failureCount, results: Array<{variableId, modeId, error?}>}. Example: set_multiple_variable_values(updates=[{variableId:'123:45', modeId:'456:78', value:{r:1,g:0,b:0}}, {variableId:'123:45', modeId:'789:01', value:{r:0.8,g:0,b:0}}]). Related: set_variable_value, create_multiple_variables",
+  {
+    updates: z.array(z.object({
+      variableId: z.string().describe("The ID of the variable to update"),
+      modeId: z.string().describe("The mode ID to set the value for"),
+      value: z.union([
+        rgbaSchema,
+        z.number(),
+        z.string(),
+        z.boolean(),
+      ]).describe("The value to set. Type must match the variable's resolvedType."),
+    })).min(1).describe("Array of variable value updates"),
+  },
+  async ({ updates }: { updates: Array<{ variableId: string; modeId: string; value: unknown }> }) => {
+    try {
+      const result = await sendCommandToFigma("set_multiple_variable_values", { updates });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting multiple variable values: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
