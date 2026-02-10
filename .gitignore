@@ -1,4 +1,18 @@
 node_modules/
-.cursor/
 dist/
 docs/
+
+# Editor/IDE configs
+.cursor/
+.vscode/
+.idea/
+
+# Local MCP config (contains personal paths)
+.mcp.json
+
+# Personal work — all project-specific outputs go here
+personal/
+
+# Environment
+.env
+.env.*

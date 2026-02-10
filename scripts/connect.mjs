@@ -52,21 +52,34 @@ async function checkServerStatus() {
   }
 }
 
-async function checkCursorMCP() {
-  try {
-    const homeDir = process.env.HOME || process.env.USERPROFILE;
-    const { stdout } = await execAsync(`cat ${homeDir}/.cursor/mcp.json`);
-    const config = JSON.parse(stdout);
-    return {
-      configured: !!config.mcpServers?.AutoFig,
-      config: config.mcpServers?.AutoFig,
-    };
-  } catch (error) {
-    return {
-      configured: false,
-      error: error.message,
-    };
+async function checkMCPConfig() {
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  const configPaths = [
+    { name: 'Cursor', path: `${homeDir}/.cursor/mcp.json` },
+    { name: 'Claude Code', path: `${homeDir}/.claude/mcp.json` },
+    { name: 'Windsurf', path: `${homeDir}/.windsurf/mcp.json` },
+  ];
+
+  for (const { name, path } of configPaths) {
+    try {
+      const { stdout } = await execAsync(`cat "${path}"`);
+      const config = JSON.parse(stdout);
+      if (config.mcpServers?.AutoFig) {
+        return {
+          configured: true,
+          client: name,
+          config: config.mcpServers?.AutoFig,
+        };
+      }
+    } catch (error) {
+      // Config file not found, try next
+    }
   }
+
+  return {
+    configured: false,
+    error: 'No MCP config found',
+  };
 }
 
 async function main() {
@@ -93,19 +106,19 @@ async function main() {
   }
   console.log('');
 
-  // Check 2: Cursor MCP Configuration
-  log('2️⃣  Checking Cursor MCP Configuration...', colors.bright);
-  const mcpStatus = await checkCursorMCP();
-  
+  // Check 2: MCP Configuration
+  log('2️⃣  Checking MCP Configuration...', colors.bright);
+  const mcpStatus = await checkMCPConfig();
+
   if (mcpStatus.configured) {
-    log('   ✅ AutoFig MCP is configured in Cursor', colors.green);
+    log(`   ✅ AutoFig MCP is configured in ${mcpStatus.client}`, colors.green);
     log(`   📝 Command: ${mcpStatus.config.command}`, colors.blue);
     if (mcpStatus.config.args) {
       log(`   📝 Args: ${mcpStatus.config.args.join(' ')}`, colors.blue);
     }
   } else {
-    log('   ❌ AutoFig MCP is not configured', colors.red);
-    log('   💡 Run: bun setup', colors.yellow);
+    log('   ❌ AutoFig MCP is not configured in any detected client', colors.red);
+    log('   💡 Add AutoFig to your MCP client config (see README)', colors.yellow);
   }
   console.log('');
 
@@ -132,7 +145,7 @@ async function main() {
     log('Next steps:', colors.bright);
     log('1. Open Figma and run the AutoFig plugin', colors.blue);
     log('2. The plugin should auto-connect to the WebSocket server', colors.blue);
-    log('3. Use Cursor with the AutoFig MCP tools', colors.blue);
+    log('3. Use your AI editor with the AutoFig MCP tools', colors.blue);
   } else {
     log('⚠️  Some components need attention:', colors.yellow + colors.bright);
     console.log('');
@@ -144,8 +157,8 @@ async function main() {
     }
     
     if (!mcpStatus.configured) {
-      log('▶️  Configure Cursor MCP:', colors.bright);
-      log('   bun setup', colors.cyan);
+      log('▶️  Configure MCP:', colors.bright);
+      log('   Add AutoFig to your MCP client config (see README)', colors.cyan);
       console.log('');
     }
   }

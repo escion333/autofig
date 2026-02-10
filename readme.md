@@ -1,19 +1,19 @@
 # AutoFig
 
-> **Model Context Protocol (MCP) server for Figma** - Bridge AI agents in Cursor IDE with Figma designs
+> **Model Context Protocol (MCP) server for Figma** - Let any AI agent read, create, and modify Figma designs
 
 [![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](./tests)
 [![Tools](https://img.shields.io/badge/MCP%20tools-101-purple.svg)](#mcp-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-AutoFig enables AI agents in Cursor IDE to read, create, and modify Figma designs programmatically. Ask your AI to design, and watch it happen in real-time!
+AutoFig enables AI agents to read, create, and modify Figma designs programmatically through the [Model Context Protocol](https://modelcontextprotocol.io/). Works with any MCP-compatible client — Claude Code, Cursor, Windsurf, Cline, and more.
 
 ## Project Structure
 
 - `src/talk_to_figma_mcp/` - TypeScript MCP server for Figma integration
-- `src/figma-plugin/` - TypeScript plugin source (builds to cursor_mcp_plugin/)
-- `src/cursor_mcp_plugin/` - Figma plugin build output
+- `src/figma-plugin/` - TypeScript plugin source (builds to plugin output)
+- `src/cursor_mcp_plugin/` - Figma plugin build output (legacy directory name)
 - `src/shared/` - Shared types and utilities
 - `src/socket.ts` - WebSocket server for MCP ↔ Plugin communication
 
@@ -29,11 +29,10 @@ AutoFig enables AI agents in Cursor IDE to read, create, and modify Figma design
 curl -fsSL https://bun.sh/install | bash
 ```
 
-2. **Install dependencies and configure Cursor:**
+2. **Install dependencies:**
 
 ```bash
 bun install
-bun setup
 ```
 
 3. **Install the Figma plugin:**
@@ -62,24 +61,11 @@ Propagate component instance overrides from a source instance to multiple target
 
 ## Development Setup
 
-To develop, update your mcp config to direct to your local directory.
+To develop, update your MCP client config to point to your local directory.
 
-```json
-{
-  "mcpServers": {
-    "AutoFig": {
-      "command": "bun",
-      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
-    }
-  }
-}
-```
+### MCP Configuration
 
-## Manual Setup and Installation
-
-### MCP Server: Integration with Cursor
-
-Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
+Add the following to your MCP client's configuration file:
 
 ```json
 {
@@ -87,6 +73,31 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
     "AutoFig": {
       "command": "bunx",
       "args": ["autofig@latest"]
+    }
+  }
+}
+```
+
+<details>
+<summary>Where is my MCP config file?</summary>
+
+| Client | Config location |
+|--------|----------------|
+| Claude Code | `~/.claude/mcp.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.windsurf/mcp.json` |
+| VS Code (Copilot) | `.vscode/mcp.json` in your project |
+
+</details>
+
+For local development, point to your local server instead:
+
+```json
+{
+  "mcpServers": {
+    "AutoFig": {
+      "command": "bun",
+      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
     }
   }
 }
@@ -134,7 +145,7 @@ Once set up, using AutoFig is simple:
 
 1. **Start the server** - `bun dev`
 2. **Open Figma** and run the AutoFig plugin (auto-connects!)
-3. **Use Cursor** - Ask the AI to interact with your designs
+3. **Use your AI editor** - Ask the AI to interact with your designs
 
 **Example prompts:**
 - "What's currently selected in Figma?"
@@ -249,13 +260,11 @@ The MCP server includes several helper prompts to guide you through complex desi
 
 ### Building the Figma Plugin
 
-1. Navigate to the Figma plugin directory:
+The plugin source is in `src/figma-plugin/` and builds to `src/cursor_mcp_plugin/`.
 
-   ```
-   cd src/cursor_mcp_plugin
-   ```
-
-2. Edit code.js and ui.html
+```bash
+bun run build:plugin
+```
 
 ## Best Practices
 
@@ -297,11 +306,10 @@ When working with the Figma MCP:
 
 | Document | Purpose |
 |----------|---------|
-| [TODO.md](./TODO.md) | Prioritized improvement tasks for contributors |
+| [QUICK_START.md](./QUICK_START.md) | Get running in 3 minutes |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Guide for AI agents and developers |
-| [ANALYSIS_REPORT.md](./ANALYSIS_REPORT.md) | Current architecture and feature status |
+| [TODO.md](./TODO.md) | Prioritized improvement tasks for contributors |
 | [PRD.md](./PRD.md) | Product requirements and specifications |
-| [docs/SETUP_GUIDE_FOR_AI_AGENTS.md](./docs/SETUP_GUIDE_FOR_AI_AGENTS.md) | Detailed setup guide with AI-friendly decision trees |
 
 ## License
 

@@ -4,7 +4,7 @@
 **Version:** 2.0.0  
 **Last Updated:** December 2024  
 **Status:** Active Development  
-**Owner:** @escion333
+**Owner:** AutoFig Contributors
 
 ---
 
@@ -28,7 +28,7 @@
 
 ### 1.1 What Is This Project?
 
-**AutoFig** is a Model Context Protocol (MCP) server that enables AI agents in Cursor IDE to read, create, and modify Figma designs programmatically. It bridges the gap between AI-assisted coding and visual design, allowing developers to leverage AI for design system creation and maintenance.
+**AutoFig** is a Model Context Protocol (MCP) server that enables AI agents to read, create, and modify Figma designs programmatically. It bridges the gap between AI-assisted coding and visual design, allowing developers to leverage AI for design system creation and maintenance. Works with any MCP-compatible client.
 
 ### 1.2 The Problem
 
@@ -139,7 +139,7 @@ Unlike simple Figma plugins, this project enables **agentic workflows** where AI
 ### 4.1 Primary Users
 
 **AI Agents (via MCP)**
-- Cursor AI agents using tools
+- AI agents in any MCP-compatible editor
 - Custom AI workflows
 - Automated design pipelines
 
@@ -377,7 +377,7 @@ interface TextProperties {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Cursor IDE                               │
+│                      MCP Client (AI Editor)                      │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                      AI Agent                              │  │
 │  │  - Receives user requests                                  │  │

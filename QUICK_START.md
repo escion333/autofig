@@ -6,7 +6,7 @@ Get AutoFig running in 3 minutes! 🚀
 
 - [Bun](https://bun.sh) installed
 - [Figma Desktop App](https://www.figma.com/downloads/) or Figma in browser
-- [Cursor IDE](https://cursor.sh)
+- An MCP-compatible AI client (Claude Code, Cursor, Windsurf, Cline, etc.)
 
 ## One-Time Setup (5 minutes)
 
@@ -19,14 +19,9 @@ cd autofig
 bun install
 ```
 
-### 2. Configure Cursor MCP
+### 2. Configure Your MCP Client
 
-```bash
-# This adds AutoFig to your Cursor MCP configuration
-bun setup
-```
-
-This creates/updates `~/.cursor/mcp.json` with:
+Add AutoFig to your MCP client's configuration:
 
 ```json
 {
@@ -38,6 +33,18 @@ This creates/updates `~/.cursor/mcp.json` with:
   }
 }
 ```
+
+<details>
+<summary>Where is my MCP config file?</summary>
+
+| Client | Config location |
+|--------|----------------|
+| Claude Code | `~/.claude/mcp.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.windsurf/mcp.json` |
+| VS Code (Copilot) | `.vscode/mcp.json` in your project |
+
+</details>
 
 ### 3. Install Figma Plugin
 
@@ -88,9 +95,9 @@ You should see:
 - Green "Connected" status in the plugin
 - A channel name displayed (e.g., `abc123de`)
 
-### Step 3: Use in Cursor
+### Step 3: Use Your AI Editor
 
-1. Open Cursor IDE
+1. Open your MCP-compatible AI client
 2. Ask the AI to interact with your Figma design!
 
 Example prompts:
@@ -112,7 +119,7 @@ bun connect
 
 This shows:
 - ✅ WebSocket server status
-- ✅ Cursor MCP configuration
+- ✅ MCP client configuration
 - ✅ Active connections
 - 💡 What to fix if something's wrong
 
@@ -132,12 +139,12 @@ bun dev
 2. Is the port correct? (should be 3055)
 3. Try clicking "Connect" manually in the plugin
 
-#### ❌ "Cursor doesn't see AutoFig tools"
+#### ❌ "AI client doesn't see AutoFig tools"
 
 **Solutions:**
-1. Restart Cursor after running `bun setup`
-2. Check `~/.cursor/mcp.json` exists and has AutoFig config
-3. Look for MCP errors in Cursor's console
+1. Restart your AI editor after configuring MCP
+2. Verify your MCP config file has the AutoFig entry
+3. Check for MCP errors in your editor's console/logs
 
 #### ❌ "No channel name showing"
 
@@ -155,7 +162,7 @@ bun dev
 |---------|-------------|
 | `bun dev` | Start WebSocket server (required for operation) |
 | `bun connect` | Check connection status and diagnose issues |
-| `bun setup` | Configure Cursor MCP (one-time) |
+| `bun setup` | Configure MCP for Cursor (one-time) |
 | `bun test` | Run tests |
 | `bun build` | Build plugin and MCP server |
 
@@ -165,15 +172,15 @@ bun dev
 
 ```
 ┌─────────────┐         ┌──────────────┐         ┌─────────────┐
-│   Cursor    │ ◄─MCP──►│  WebSocket   │◄─WS────►│   Figma     │
-│   (AI)      │         │   Server     │         │   Plugin    │
+│  AI Editor  │ ◄─MCP──►│  WebSocket   │◄─WS────►│   Figma     │
+│  (MCP)      │         │   Server     │         │   Plugin    │
 └─────────────┘         └──────────────┘         └─────────────┘
                          (bun dev)               (AutoFig)
                          Port 3055
 ```
 
-1. **Cursor** uses MCP to send commands
-2. **WebSocket Server** relays messages between Cursor and Figma
+1. **AI Editor** uses MCP to send commands
+2. **WebSocket Server** relays messages between the AI and Figma
 3. **Figma Plugin** executes commands and sends results back
 
 All three must be running simultaneously!
@@ -190,7 +197,7 @@ bun dev
 
 # Figma: Run AutoFig plugin (auto-connects)
 
-# Cursor: Start coding!
+# AI Editor: Start designing!
 ```
 
 ### Option B: With Auto-Rebuild
@@ -231,7 +238,7 @@ bun run dev:server
 2. ✅ **Keep the terminal open** while working
 3. ✅ **Check auto-connection** - the plugin should connect automatically
 4. ✅ **Use `bun connect`** if something feels wrong
-5. ✅ **Restart Cursor** after first-time MCP setup
+5. ✅ **Restart your AI editor** after first-time MCP setup
 
 Happy designing! 🎨✨
 

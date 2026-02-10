@@ -245,9 +245,98 @@
         background-color: #1a472a;
         color: #4ade80;
       }
+      /* Minimize / Expand */
+      .minimize-bar {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        height: 44px;
+        box-sizing: border-box;
+        background-color: #1e1e1e;
+      }
+      body.minimized { padding: 0; }
+      body.minimized .minimize-bar { display: flex; }
+      body.minimized .container { display: none; }
+      .mini-logo {
+        width: 20px;
+        height: 20px;
+        padding: 4px;
+        background-color: #333;
+        border-radius: 6px;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+      .mini-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+      }
+      .mini-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #555;
+        flex-shrink: 0;
+        transition: background-color 0.3s;
+      }
+      .mini-dot.connected {
+        background-color: #4ade80;
+        box-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
+      }
+      .mini-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: #888;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mini-dot.connected + .mini-label { color: #ccc; }
+      .mini-channel {
+        font-size: 11px;
+        font-family: monospace;
+        color: #4ade80;
+        background: #1a472a;
+        padding: 2px 6px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .ghost-btn {
+        background: none;
+        border: none;
+        padding: 4px;
+        margin: 0;
+        cursor: pointer;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        opacity: 0.5;
+        transition: opacity 0.15s, background-color 0.15s;
+      }
+      .ghost-btn:hover {
+        opacity: 1;
+        background-color: rgba(255,255,255,0.06);
+      }
+      .ghost-btn svg { display: block; }
     </style>
   </head>
   <body>
+    <div class="minimize-bar">
+      <img class="mini-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAMAAAANIilAAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJcEhZcwAAEJwAABCcASbNOjQAAAB1UExURUdwTP////////////////39/f////////////////////////////7+/v////////////39/f////////////////////////////////////////////////////39/fn5+ejo6P///+rq6uXl5f////Ly8gf4a04AAAAkdFJOUwAOdkZCfz04zIgbT0pkIagnm7C9b6C2LWqSxBMyB11W2Ovsy3D12ZYAAALtSURBVEjHndcJt6ogEADgXNAUcWlxSQVN3/3/P/EBAgJpWdM9p5ue78xANE2n05vIUduffgvn1oA0bX+hvRc1DYjTPHe+tiGIoqhx4zTNq/y72lMURQtmqasuPc4dAmgwfWuZrqquiw8uNnC5BRJT3YXhIZ7Xris0oLjlmOrArz7VHpOb6wpNee0ITVMHvvd25/qgvtFwla8dpxV7xnTi7dbed7iuTY16lZoV7iXQb3cqRgjVgoviKTZSUw2719pbD2OEVu5yjnqeOpZ75lMMobVzfUcwC6lrofGJpdb3jGtj6TkkNKRWtXMsU+ciNdfQUwe+zZ7/vo1CYYgv39G/kShMS6mHL+g8F96K2Uqi52E6j3DFnsc4uR/hMwugYd9bOLoeSTvPE1yx4/sLh9B9fKbziHVM3z/G+dKb5wdKdysxsNCc4+2l/yk7EnrOVhwGBt9auqJ0t9gR13C4cl77bdil88SPuK9jxrXksHjab48Mwo+4ha3aSbZJ52JpC4GFbY7OdsVst4Lls/mKZe1y6fXTonS3RFsIN7C5dAJsO+WiI21jbd8xesFEtoUdLLjH+qGNJ9WRuj3MOOQNycaV6khvsLc0MxsD2Uq7bhcHuBZh4rFdujjT1c6GkaXtszCx3sW3MRRfNjwiI7EjGjGfFjZwUgM9CuNggqRVXz+vOGDTBOCP5UnHE73ghjK1jYNlEIma9UnHBb/qdkvq1MSQjk4yCvGk4UneQylLbWAIio3I1t26q4sNTuM01tqQe9+My5pYv9wk8Ypv92w7JpXYulGoD8aJ3C/bUUp8tW5EuTa2oXI7ZGLzahZYE0l03QqZWI8Lfh1lw+zxEoNIrF8Dm/NQT8rzgz+WP/oQmL6Ud4pud/4DZzMWPKjXZfJufOyiVzzKV4/609yelDaWiZsDc6+DSwOLxNqxeD/6Ah3zf674+Kyf3xUeDi3WDFIKzCpOv/5phB4MD+cs/OWXVdych/GBf/xJd4pL9+1i/wOElMO5v/co4wAAAABJRU5ErkJggg==" />
+      <div class="mini-status">
+        <span id="mini-status-dot" class="mini-dot"></span>
+        <span id="mini-status-label" class="mini-label">Disconnected</span>
+      </div>
+      <span id="mini-channel" class="mini-channel" style="display:none;"></span>
+      <button id="btn-expand" class="ghost-btn" title="Expand">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
     <div class="container">
       <div class="header">
         <div class="header-logo">
@@ -260,6 +349,9 @@
           <h1>AutoFig Plugin <span id="activity-indicator" class="activity-indicator"></span></h1>
           <p>Connect Figma to Cursor AI using MCP</p>
         </div>
+        <button id="btn-minimize" class="ghost-btn" title="Minimize" style="margin-left: auto;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
       
       <!-- Last Command Display -->
@@ -339,7 +431,7 @@
         <div class="section">
           <h2>About AutoFig Plugin</h2>
           <p>
-            This plugin allows Cursor AI to communicate with Figma, enabling
+            This plugin allows AI agents to communicate with Figma via MCP, enabling
             AI-assisted design operations.
             <a
               class="link"
@@ -1043,6 +1135,58 @@
       
       // Attempt auto-connect when page loads
       attemptAutoConnect();
+
+      // ---- Minimize / Expand ----
+      const FULL_WIDTH = 350;
+      const FULL_HEIGHT = 450;
+      const MINI_HEIGHT = 44;
+
+      const minimizeBtn = document.getElementById("btn-minimize");
+      const expandBtn = document.getElementById("btn-expand");
+      const miniStatusDot = document.getElementById("mini-status-dot");
+      const miniStatusLabel = document.getElementById("mini-status-label");
+      const miniChannel = document.getElementById("mini-channel");
+
+      function setMinimized(minimized) {
+        if (minimized) {
+          document.body.classList.add("minimized");
+          updateMinimizeBarStatus();
+        } else {
+          document.body.classList.remove("minimized");
+        }
+        parent.postMessage({
+          pluginMessage: {
+            type: "resize",
+            width: FULL_WIDTH,
+            height: minimized ? MINI_HEIGHT : FULL_HEIGHT,
+          },
+        }, "*");
+      }
+
+      function updateMinimizeBarStatus() {
+        if (state.connected) {
+          miniStatusDot.classList.add("connected");
+          miniStatusLabel.textContent = "Connected";
+          if (state.channel) {
+            miniChannel.textContent = state.channel;
+            miniChannel.style.display = "";
+          }
+        } else {
+          miniStatusDot.classList.remove("connected");
+          miniStatusLabel.textContent = "Disconnected";
+          miniChannel.style.display = "none";
+        }
+      }
+
+      minimizeBtn.addEventListener("click", () => setMinimized(true));
+      expandBtn.addEventListener("click", () => setMinimized(false));
+
+      // Patch updateConnectionStatus to also sync minimize bar
+      const _origUpdateConnectionStatus = updateConnectionStatus;
+      updateConnectionStatus = function(isConnected, message) {
+        _origUpdateConnectionStatus(isConnected, message);
+        updateMinimizeBarStatus();
+      };
     </script>
   </body>
 </html>

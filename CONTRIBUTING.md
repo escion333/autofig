@@ -47,7 +47,7 @@ src/
 │       ├── progress.ts          # sendProgressUpdate, generateCommandId
 │       └── helpers.ts           # getNodeById, delay, customBase64Encode
 │
-├── cursor_mcp_plugin/           # Build output (DO NOT EDIT DIRECTLY)
+├── cursor_mcp_plugin/           # Build output - DO NOT EDIT (legacy directory name)
 │   ├── code.js                  # Auto-generated from TypeScript
 │   ├── manifest.json
 │   └── ui.html
@@ -347,7 +347,7 @@ bun run build
 bun socket
 ```
 
-### 3. Restart Cursor to reload MCP
+### 3. Restart your AI editor to reload MCP
 
 ### 4. Open Figma, run plugin, connect
 
