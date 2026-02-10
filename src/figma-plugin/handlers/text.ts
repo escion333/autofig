@@ -149,7 +149,7 @@ async function findTextNodes(
  * Scan for text nodes in a subtree
  */
 export async function scanTextNodes(params: CommandParams['scan_text_nodes']) {
-  const { nodeId, depth: maxDepth, filter } = params || {};
+  const { nodeId, depth: maxDepth, filter, maxResults } = params || {};
   const commandId = generateCommandId();
 
   let rootNode: SceneNode | PageNode;
@@ -193,6 +193,11 @@ export async function scanTextNodes(params: CommandParams['scan_text_nodes']) {
   // Apply depth filter if provided
   if (maxDepth !== undefined) {
     filteredNodes = filteredNodes.filter((n) => n.depth <= maxDepth);
+  }
+
+  // Apply maxResults limit
+  if (maxResults !== undefined && maxResults > 0 && filteredNodes.length > maxResults) {
+    filteredNodes = filteredNodes.slice(0, maxResults);
   }
 
   sendProgressUpdate(
@@ -241,6 +246,32 @@ export async function setMultipleTextContents(params: CommandParams['set_multipl
   let successCount = 0;
   let failureCount = 0;
 
+  // Pre-scan: collect unique fonts from all text nodes and batch-load them
+  const fontMap = new Map<string, FontName>();
+  for (const { nodeId } of updates) {
+    try {
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (node && node.type === 'TEXT') {
+        const textNode = node as TextNode;
+        if (textNode.fontName !== figma.mixed) {
+          const font = textNode.fontName as FontName;
+          const key = `${font.family}::${font.style}`;
+          if (!fontMap.has(key)) {
+            fontMap.set(key, font);
+          }
+        }
+      }
+    } catch (_) {
+      // Skip nodes that can't be resolved; they'll fail during processing
+    }
+  }
+
+  if (fontMap.size > 0) {
+    await Promise.all(
+      Array.from(fontMap.values()).map((f) => figma.loadFontAsync(f))
+    );
+  }
+
   // Process in chunks of 5
   const CHUNK_SIZE = 5;
   const chunks: Array<Array<{ nodeId: string; text: string }>> = [];
@@ -276,10 +307,7 @@ export async function setMultipleTextContents(params: CommandParams['set_multipl
         }
 
         const textNode = node as TextNode;
-        // Handle mixed fonts - setCharacters will handle font loading
-        if (textNode.fontName !== figma.mixed) {
-          await figma.loadFontAsync(textNode.fontName as FontName);
-        }
+        // Fonts pre-loaded above; setCharacters handles mixed fonts internally
         await setCharacters(textNode, text);
 
         return { success: true, nodeId, nodeName: node.name };

@@ -109,6 +109,10 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   'create_multiple_component_instances': 300000,       // 5 minutes - batch instance creation
   'set_multiple_component_property_references': 300000, // 5 minutes - batch property reference wiring
 
+  // Batch style operations
+  'apply_style_batch': 300000,         // 5 minutes - batch style application
+  'set_paint_batch': 300000,           // 5 minutes - batch paint application
+
   // Default timeout for all other commands
   'default': 30000                     // 30 seconds
 };
@@ -168,10 +172,10 @@ const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${server
  * All values are 0-1 range for Figma compatibility
  */
 const rgbaSchema = z.object({
-  r: z.number().min(0).max(1).describe("Red component (0-1)"),
-  g: z.number().min(0).max(1).describe("Green component (0-1)"),
-  b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-  a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
+  r: z.number().min(0).max(1),
+  g: z.number().min(0).max(1),
+  b: z.number().min(0).max(1),
+  a: z.number().min(0).max(1).optional(),
 });
 
 /**
@@ -387,7 +391,7 @@ async function joinChannelInternal(channelName: string): Promise<void> {
 // Join Channel Tool - MUST be first to enable all other tools
 server.tool(
   "join_channel",
-  "Join a specific channel. Usually not needed — auto-joins 'autofig' by default. Use only to switch channels.",
+  "Join a WebSocket channel (auto-joins 'autofig' by default).",
   {
     channel: z.string().describe("The channel name to join (default: 'autofig')").default("autofig"),
   },
@@ -431,7 +435,7 @@ server.tool(
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document including name, ID, and current page. Returns: {name: string, id: string, currentPage: {name: string, id: string}}. Use this to understand the document structure before making changes.",
+  "Get document name, ID, and current page.",
   {},
   async () => {
     try {
@@ -446,7 +450,7 @@ server.tool(
 // Selection Tool
 server.tool(
   "get_selection",
-  "Get information about the current selection in Figma. Returns: {count: number, nodes: Array<{id: string, name: string, type: string}>}. Use this to get valid node IDs before modifying nodes.",
+  "Get current selection node IDs, names, and types.",
   {},
   async () => {
     try {
@@ -461,7 +465,7 @@ server.tool(
 // Read My Design Tool
 server.tool(
   "read_my_design",
-  "Get detailed information about the current selection including fills, strokes, text content, layout properties, and children. Returns filtered JSON with all relevant node properties. Use after create operations to verify results.",
+  "Get detailed properties of the current selection.",
   {},
   async () => {
     try {
@@ -476,9 +480,9 @@ server.tool(
 // Node Info Tool
 server.tool(
   "get_node_info",
-  "Get detailed information about a specific node by ID including type, position, size, fills, strokes, and text content. Returns filtered JSON. Example: get_node_info(nodeId='123:456'). Related: get_nodes_info for multiple nodes.",
+  "Get detailed properties of a node by ID.",
   {
-    nodeId: z.string().describe("The ID of the node to get information about"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -492,15 +496,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting node info", error);
     }
   }
 );
@@ -508,9 +504,9 @@ server.tool(
 // Nodes Info Tool
 server.tool(
   "get_nodes_info",
-  "Get detailed information about multiple nodes efficiently in parallel. Returns array of node details. Example: get_nodes_info(nodeIds=['123:1', '123:2']). Use when inspecting multiple nodes at once.",
+  "Get detailed properties of multiple nodes by IDs.",
   {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
+    nodeIds: z.array(z.string())
   },
   async ({ nodeIds }: any) => {
     try {
@@ -529,15 +525,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting nodes info", error);
     }
   }
 );
@@ -546,17 +534,17 @@ server.tool(
 // Create Rectangle Tool
 server.tool(
   "create_rectangle",
-  "Create a new rectangle shape at specified position and size. Auto-selects and scrolls to the new node. Returns: {id, name, x, y, width, height}. Example: create_rectangle(x=100, y=100, width=200, height=150, name='My Box')",
+  "Create a rectangle with position, size, and optional parent.",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
-    width: z.number().describe("Width of the rectangle"),
-    height: z.number().describe("Height of the rectangle"),
-    name: z.string().optional().describe("Optional name for the rectangle"),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    name: z.string().optional(),
     parentId: z
       .string()
       .optional()
-      .describe("Optional parent node ID to append the rectangle to"),
+      ,
   },
   async ({ x, y, width, height, name, parentId }: any) => {
     try {
@@ -577,15 +565,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating rectangle: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating rectangle", error);
     }
   }
 );
@@ -593,20 +573,20 @@ server.tool(
 // Create Frame Tool
 server.tool(
   "create_frame",
-  "Create a new frame (container) with optional auto-layout. Frames can hold other elements and support advanced layout properties. Auto-selects and scrolls to new node. Returns: {id, name, x, y, width, height, layoutMode}. Example: create_frame(x=0, y=0, width=400, height=300, layoutMode='VERTICAL', itemSpacing=16)",
+  "Create a frame/container with optional auto-layout.",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
-    width: z.number().describe("Width of the frame"),
-    height: z.number().describe("Height of the frame"),
-    name: z.string().optional().describe("Optional name for the frame"),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    name: z.string().optional(),
     parentId: z
       .string()
       .optional()
-      .describe("Optional parent node ID to append the frame to"),
+      ,
     fillColor: optionalRgbaSchema("Fill color in RGBA format"),
     strokeColor: optionalRgbaSchema("Stroke color in RGBA format"),
-    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+    strokeWeight: z.number().positive().optional(),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
     layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children"),
     paddingTop: z.number().optional().describe("Top padding for auto-layout frame"),
@@ -680,15 +660,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating frame: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating frame", error);
     }
   }
 );
@@ -696,11 +668,11 @@ server.tool(
 // Create Text Tool
 server.tool(
   "create_text",
-  "Create a new text node with custom font, size, weight, and color. Auto-selects and scrolls to new text. Returns: {id, name, characters, fontSize, fontFamily}. Example: create_text(x=100, y=100, text='Hello', fontSize=24, fontWeight=700, fontColor={r:0,g:0,b:0})",
+  "Create a text node with font, size, and color options.",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
-    text: z.string().describe("Text content"),
+    x: z.number(),
+    y: z.number(),
+    text: z.string(),
     fontSize: z.number().optional().describe("Font size (default: 14)"),
     fontWeight: z
       .number()
@@ -718,11 +690,11 @@ server.tool(
     name: z
       .string()
       .optional()
-      .describe("Semantic layer name for the text node"),
+      ,
     parentId: z
       .string()
       .optional()
-      .describe("Optional parent node ID to append the text to"),
+      ,
   },
   async ({ x, y, text, fontSize, fontWeight, fontFamily, fontStyle, fontColor, name, parentId }: any) => {
     try {
@@ -748,15 +720,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating text: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating text", error);
     }
   }
 );
@@ -764,20 +728,20 @@ server.tool(
 // Create Ellipse Tool
 server.tool(
   "create_ellipse",
-  "Create a new ellipse (circle or oval) shape with optional fill and stroke. Set width=height for perfect circle. Auto-selects and scrolls to new node. Returns: {id, name, x, y, width, height}. Example: create_ellipse(x=100, y=100, width=80, height=80, fillColor={r:0.2,g:0.6,b:1})",
+  "Create an ellipse/circle with optional fill and stroke.",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
-    width: z.number().describe("Width of the ellipse"),
-    height: z.number().describe("Height of the ellipse (same as width for a circle)"),
-    name: z.string().optional().describe("Optional name for the ellipse"),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    name: z.string().optional(),
     parentId: z
       .string()
       .optional()
-      .describe("Optional parent node ID to append the ellipse to"),
+      ,
     fillColor: optionalRgbaSchema("Fill color in RGBA format"),
     strokeColor: optionalRgbaSchema("Stroke color in RGBA format"),
-    strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+    strokeWeight: z.number().positive().optional(),
   },
   async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }: any) => {
     try {
@@ -802,15 +766,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating ellipse: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating ellipse", error);
     }
   }
 );
@@ -818,13 +774,13 @@ server.tool(
 // Set Fill Color Tool
 server.tool(
   "set_fill_color",
-  "Set the fill (background) color of a node. Works on shapes, frames, and text nodes. Auto-selects and scrolls to node. Returns: {id, name, fills}. Example: set_fill_color(nodeId='123:1', r=1, g=0, b=0, a=1) for red",
+  "Set fill color on a node (RGBA 0-1).",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
-    r: z.number().min(0).max(1).describe("Red component (0-1)"),
-    g: z.number().min(0).max(1).describe("Green component (0-1)"),
-    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+    nodeId: z.string(),
+    r: z.number().min(0).max(1),
+    g: z.number().min(0).max(1),
+    b: z.number().min(0).max(1),
+    a: z.number().min(0).max(1).optional(),
   },
   async ({ nodeId, r, g, b, a }: any) => {
     try {
@@ -843,15 +799,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting fill color", error);
     }
   }
 );
@@ -859,14 +807,14 @@ server.tool(
 // Set Stroke Color Tool
 server.tool(
   "set_stroke_color",
-  "Set the stroke (border) color and weight of a node. Works on shapes and frames. Auto-selects and scrolls to node. Returns: {id, name, strokes}. Example: set_stroke_color(nodeId='123:1', r=0, g=0, b=0, weight=2) for black 2px border. Related: set_fill_color",
+  "Set stroke color and weight on a node.",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
-    r: z.number().min(0).max(1).describe("Red component (0-1)"),
-    g: z.number().min(0).max(1).describe("Green component (0-1)"),
-    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-    weight: z.number().positive().optional().describe("Stroke weight"),
+    nodeId: z.string(),
+    r: z.number().min(0).max(1),
+    g: z.number().min(0).max(1),
+    b: z.number().min(0).max(1),
+    a: z.number().min(0).max(1).optional(),
+    weight: z.number().positive().optional(),
   },
   async ({ nodeId, r, g, b, a, weight }: any) => {
     try {
@@ -886,15 +834,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting stroke color", error);
     }
   }
 );
@@ -902,11 +842,11 @@ server.tool(
 // Move Node Tool
 server.tool(
   "move_node",
-  "Move a node to a new (x, y) position. Auto-selects and scrolls to node. Returns: {id, name, x, y}. Example: move_node(nodeId='123:1', x=200, y=150)",
+  "Move a node to new (x, y) position.",
   {
-    nodeId: z.string().describe("The ID of the node to move"),
-    x: z.number().describe("New X position"),
-    y: z.number().describe("New Y position"),
+    nodeId: z.string(),
+    x: z.number(),
+    y: z.number(),
   },
   async ({ nodeId, x, y }: any) => {
     try {
@@ -921,15 +861,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error moving node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("moving node", error);
     }
   }
 );
@@ -937,11 +869,11 @@ server.tool(
 // Clone Node Tool
 server.tool(
   "clone_node",
-  "Create a duplicate copy of an existing node at a new position. Optionally specify x, y coordinates. Auto-selects and scrolls to clone. Returns: {id, name, x, y}. Example: clone_node(nodeId='123:1', x=250, y=100). Use for creating variations or repeated elements.",
+  "Duplicate a node, optionally at new position.",
   {
-    nodeId: z.string().describe("The ID of the node to clone"),
-    x: z.number().optional().describe("New X position for the clone"),
-    y: z.number().optional().describe("New Y position for the clone")
+    nodeId: z.string(),
+    x: z.number().optional(),
+    y: z.number().optional()
   },
   async ({ nodeId, x, y }: any) => {
     try {
@@ -956,14 +888,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error cloning node: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("cloning node", error);
     }
   }
 );
@@ -975,10 +900,10 @@ server.tool(
 // Reorder Node Tool
 server.tool(
   "reorder_node",
-  "Move a node to a specific index (z-order) within its parent container. Index 0 is back (bottom), higher indices are toward front (top). Returns: {id, name, type, parentId}. Example: reorder_node(nodeId='123:456', index=2). Use to precisely control stacking order. Related: move_to_front, move_to_back, move_forward, move_backward",
+  "Move a node to a specific z-order index.",
   {
-    nodeId: z.string().describe("The ID of the node to reorder"),
-    index: z.number().int().min(0).describe("Target index position (0 = back/bottom, higher = front/top)"),
+    nodeId: z.string(),
+    index: z.number().int().min(0).describe("Z-order index (0=back)"),
   },
   async ({ nodeId, index }: any) => {
     try {
@@ -993,14 +918,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error reordering node: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("reordering node", error);
     }
   }
 );
@@ -1008,9 +926,9 @@ server.tool(
 // Move to Front Tool
 server.tool(
   "move_to_front",
-  "Move a node to the front (top) of its parent's layer stack, making it render above all siblings. Returns: {id, name, type, parentId}. Example: move_to_front(nodeId='123:456'). Use to bring elements to foreground. Related: move_to_back, move_forward, move_backward, reorder_node",
+  "Move a node to the front of its parent stack.",
   {
-    nodeId: z.string().describe("The ID of the node to move to front"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1025,14 +943,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error moving node to front: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("moving node to front", error);
     }
   }
 );
@@ -1040,9 +951,9 @@ server.tool(
 // Move to Back Tool
 server.tool(
   "move_to_back",
-  "Move a node to the back (bottom) of its parent's layer stack, making it render behind all siblings. Returns: {id, name, type, parentId}. Example: move_to_back(nodeId='123:456'). Use to send elements to background. Related: move_to_front, move_forward, move_backward, reorder_node",
+  "Move a node to the back of its parent stack.",
   {
-    nodeId: z.string().describe("The ID of the node to move to back"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1057,14 +968,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error moving node to back: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("moving node to back", error);
     }
   }
 );
@@ -1072,9 +976,9 @@ server.tool(
 // Move Forward Tool
 server.tool(
   "move_forward",
-  "Move a node one level forward (up) in its parent's layer stack, swapping position with the node above it. Returns: {id, name, type, parentId}. Example: move_forward(nodeId='123:456'). Use for incremental layer adjustments. Related: move_backward, move_to_front, move_to_back, reorder_node",
+  "Move a node one level forward in z-order.",
   {
-    nodeId: z.string().describe("The ID of the node to move forward"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1089,14 +993,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error moving node forward: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("moving node forward", error);
     }
   }
 );
@@ -1104,9 +1001,9 @@ server.tool(
 // Move Backward Tool
 server.tool(
   "move_backward",
-  "Move a node one level backward (down) in its parent's layer stack, swapping position with the node below it. Returns: {id, name, type, parentId}. Example: move_backward(nodeId='123:456'). Use for incremental layer adjustments. Related: move_forward, move_to_front, move_to_back, reorder_node",
+  "Move a node one level backward in z-order.",
   {
-    nodeId: z.string().describe("The ID of the node to move backward"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1121,14 +1018,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error moving node backward: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("moving node backward", error);
     }
   }
 );
@@ -1136,11 +1026,11 @@ server.tool(
 // Resize Node Tool
 server.tool(
   "resize_node",
-  "Resize a node to new width and height. Auto-selects and scrolls to node. Returns: {id, name, width, height}. Example: resize_node(nodeId='123:1', width=300, height=200)",
+  "Resize a node to new width and height.",
   {
-    nodeId: z.string().describe("The ID of the node to resize"),
-    width: z.number().positive().describe("New width"),
-    height: z.number().positive().describe("New height"),
+    nodeId: z.string(),
+    width: z.number().positive(),
+    height: z.number().positive(),
   },
   async ({ nodeId, width, height }: any) => {
     try {
@@ -1159,15 +1049,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error resizing node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("resizing node", error);
     }
   }
 );
@@ -1175,9 +1057,9 @@ server.tool(
 // Delete Node Tool
 server.tool(
   "delete_node",
-  "Permanently remove a single node from the document. Cannot be undone via API. Shows notification with deleted node name. Returns: {success, nodeId, nodeName}. Example: delete_node(nodeId='123:1'). Related: delete_multiple_nodes for batch deletion.",
+  "Delete a single node permanently.",
   {
-    nodeId: z.string().describe("The ID of the node to delete"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1191,15 +1073,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting node", error);
     }
   }
 );
@@ -1207,31 +1081,16 @@ server.tool(
 // Delete Multiple Nodes Tool
 server.tool(
   "delete_multiple_nodes",
-  "Permanently remove multiple nodes in a single operation. More efficient than individual deletions. Returns: {success, deletedCount, results}. Example: delete_multiple_nodes(nodeIds=['123:1', '123:2', '123:3']). Use for bulk cleanup operations.",
+  "Delete multiple nodes in one operation.",
   {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
+    nodeIds: z.array(z.string()),
   },
   async ({ nodeIds }: any) => {
     try {
       const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting multiple nodes: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting multiple nodes", error);
     }
   }
 );
@@ -1239,14 +1098,14 @@ server.tool(
 // Export Node as Image Tool
 server.tool(
   "export_node_as_image",
-  "Export a node as PNG, JPG, SVG, or PDF with optional scaling. Returns base64-encoded image data and dimensions. Auto-selects node and shows file size. Example: export_node_as_image(nodeId='123:1', format='PNG', scale=2). Use for generating assets or previews.",
+  "Export a node as PNG, JPG, SVG, or PDF.",
   {
-    nodeId: z.string().describe("The ID of the node to export"),
+    nodeId: z.string(),
     format: z
       .enum(["PNG", "JPG", "SVG", "PDF"])
       .optional()
-      .describe("Export format"),
-    scale: z.number().positive().optional().describe("Export scale"),
+      ,
+    scale: z.number().positive().optional(),
   },
   async ({ nodeId, format, scale }: any) => {
     try {
@@ -1267,15 +1126,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("exporting node as image", error);
     }
   }
 );
@@ -1283,14 +1134,14 @@ server.tool(
 // Export Multiple Nodes Tool
 server.tool(
   "export_multiple_nodes",
-  "Export multiple nodes as images in a batch operation with progress tracking. Returns array of export results with base64-encoded image data. Example: export_multiple_nodes(nodeIds=['123:1', '456:2'], format='PNG', scale=2). Use for batch asset generation. Each export includes success status, nodeId, and data. Related: export_node_as_image",
+  "Batch export nodes as images.",
   {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to export"),
+    nodeIds: z.array(z.string()),
     format: z
       .enum(["PNG", "JPG", "SVG", "PDF"])
       .optional()
-      .describe("Export format (default: PNG)"),
-    scale: z.number().positive().optional().describe("Export scale (default: 1)"),
+      ,
+    scale: z.number().positive().optional(),
   },
   async ({ nodeIds, format, scale }: any) => {
     try {
@@ -1315,14 +1166,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error exporting multiple nodes: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("exporting multiple nodes", error);
     }
   }
 );
@@ -1330,10 +1174,10 @@ server.tool(
 // Set Text Content Tool
 server.tool(
   "set_text_content",
-  "Update the text content of a single text node. Preserves font styling. Auto-selects and shows preview. Returns: {id, name, characters, fontName}. Example: set_text_content(nodeId='123:1', text='Updated text'). Related: set_multiple_text_contents for batch updates.",
+  "Update text content of a text node.",
   {
-    nodeId: z.string().describe("The ID of the text node to modify"),
-    text: z.string().describe("New text content"),
+    nodeId: z.string(),
+    text: z.string(),
   },
   async ({ nodeId, text }: any) => {
     try {
@@ -1351,15 +1195,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting text content", error);
     }
   }
 );
@@ -1371,28 +1207,14 @@ server.tool(
 // Get Local Variable Collections Tool
 server.tool(
   "get_local_variable_collections",
-  "Get all local variable collections from the Figma document. Collections organize design tokens by type/purpose with multi-mode support (light/dark, mobile/desktop, etc.). Returns: {count, collections: Array<{id, name, modes, variableIds}>}. Example: Use to discover collections before creating variables. Related: create_variable_collection, get_local_variables",
+  "Get all variable collections from the document.",
   {},
   async () => {
     try {
       const result = await sendCommandToFigma("get_local_variable_collections");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting variable collections: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting variable collections", error);
     }
   }
 );
@@ -1400,30 +1222,16 @@ server.tool(
 // Get Local Variables Tool
 server.tool(
   "get_local_variables",
-  "Get all local variables (design tokens) from the document, optionally filtered by collection. Variables can be COLOR, FLOAT, STRING, or BOOLEAN types. Returns: {count, variables: Array<{id, name, resolvedType, variableCollectionId, valuesByMode}>}. Example: get_local_variables(collectionId='123:45'). Related: get_local_variable_collections, create_variable",
+  "Get variables, optionally filtered by collection.",
   {
-    collectionId: z.string().optional().describe("Optional collection ID to filter variables by a specific collection"),
+    collectionId: z.string().optional().describe("Filter by collection ID"),
   },
   async ({ collectionId }: { collectionId?: string }) => {
     try {
       const result = await sendCommandToFigma("get_local_variables", { collectionId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting variables: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting variables", error);
     }
   }
 );
@@ -1431,7 +1239,7 @@ server.tool(
 // Create Variable Collection Tool
 server.tool(
   "create_variable_collection",
-  "Create a new variable collection to organize design tokens by theme or category. Define multiple modes upfront for theme switching (light/dark, etc.). Returns: {id, name, modes: Array<{modeId, name}>, variableIds}. Example: create_variable_collection(name='Colors', modes=['Light', 'Dark']). Related: create_variable, get_local_variable_collections",
+  "Create a variable collection with optional modes.",
   {
     name: z.string().describe("Name of the collection (e.g., 'Colors', 'Spacing', 'Typography')"),
     modes: z.array(z.string()).optional().describe("Optional array of mode names (e.g., ['Light', 'Dark']). Defaults to a single 'Mode 1' if not provided."),
@@ -1439,23 +1247,9 @@ server.tool(
   async ({ name, modes }: { name: string; modes?: string[] }) => {
     try {
       const result = await sendCommandToFigma("create_variable_collection", { name, modes });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating variable collection: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating variable collection", error);
     }
   }
 );
@@ -1463,7 +1257,7 @@ server.tool(
 // Create Variable Tool
 server.tool(
   "create_variable",
-  "Create a new variable (design token) within a collection. Supports COLOR (rgba), FLOAT (numbers), STRING (text), BOOLEAN (true/false). Optional initial value for default mode. Returns: {id, name, resolvedType, variableCollectionId}. Example: create_variable(collectionId='123:45', name='primary/500', resolvedType='COLOR', value={r:0.2,g:0.6,b:1}). Related: set_variable_value, bind_variable",
+  "Create a variable (COLOR/FLOAT/STRING/BOOLEAN).",
   {
     collectionId: z.string().describe("The ID of the collection to add the variable to"),
     name: z.string().describe("Name of the variable (e.g., 'primary/500', 'spacing/sm')"),
@@ -1478,23 +1272,9 @@ server.tool(
   async ({ collectionId, name, resolvedType, value }: { collectionId: string; name: string; resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"; value?: unknown }) => {
     try {
       const result = await sendCommandToFigma("create_variable", { collectionId, name, resolvedType, value });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating variable: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating variable", error);
     }
   }
 );
@@ -1502,17 +1282,12 @@ server.tool(
 // Set Variable Value Tool
 server.tool(
   "set_variable_value",
-  "Set or update a variable's value for a specific mode (e.g., different color in Light vs Dark mode). Value type must match variable's resolvedType. Returns: {success, variableId, modeId, value}. Example: set_variable_value(variableId='123:45', modeId='456:78', value={r:0.1,g:0.1,b:0.1}). Related: create_variable, get_local_variables",
+  "Set a variable value for a specific mode.",
   {
-    variableId: z.string().describe("The ID of the variable to update"),
-    modeId: z.string().describe("The mode ID to set the value for (get from collection's modes array)"),
+    variableId: z.string(),
+    modeId: z.string().describe("Mode ID from collection modes"),
     value: z.union([
-      z.object({
-        r: z.number().min(0).max(1).describe("Red component (0-1)"),
-        g: z.number().min(0).max(1).describe("Green component (0-1)"),
-        b: z.number().min(0).max(1).describe("Blue component (0-1)"),
-        a: z.number().min(0).max(1).optional().describe("Alpha component (0-1, default: 1)"),
-      }),
+      rgbaSchema,
       z.number(),
       z.string(),
       z.boolean(),
@@ -1521,23 +1296,9 @@ server.tool(
   async ({ variableId, modeId, value }: { variableId: string; modeId: string; value: unknown }) => {
     try {
       const result = await sendCommandToFigma("set_variable_value", { variableId, modeId, value });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting variable value: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting variable value", error);
     }
   }
 );
@@ -1545,7 +1306,7 @@ server.tool(
 // Create Multiple Variables Tool (batch)
 server.tool(
   "create_multiple_variables",
-  "Create multiple variables (design tokens) in a single collection in one batch call. Much faster than calling create_variable repeatedly. Supports mixed types (COLOR, FLOAT, STRING, BOOLEAN) with optional initial values. Returns: {success, successCount, failureCount, results: Array<{name, variableId?, error?}>}. Example: create_multiple_variables(collectionId='123:45', variables=[{name:'primary/500', resolvedType:'COLOR', value:{r:0.2,g:0.6,b:1}}, {name:'spacing/sm', resolvedType:'FLOAT', value:8}]). Related: create_variable, set_multiple_variable_values",
+  "Batch create variables in a collection.",
   {
     collectionId: z.string().describe("The ID of the collection to add the variables to"),
     variables: z.array(z.object({
@@ -1562,23 +1323,9 @@ server.tool(
   async ({ collectionId, variables }: { collectionId: string; variables: Array<{ name: string; resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"; value?: unknown }> }) => {
     try {
       const result = await sendCommandToFigma("create_multiple_variables", { collectionId, variables });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating multiple variables: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating multiple variables", error);
     }
   }
 );
@@ -1586,10 +1333,10 @@ server.tool(
 // Set Multiple Variable Values Tool (batch)
 server.tool(
   "set_multiple_variable_values",
-  "Set values for multiple variables across modes in one batch call. Much faster than calling set_variable_value repeatedly (e.g., setting light and dark mode values for 11 colors = 22 updates in one call instead of 22 separate calls). Returns: {success, successCount, failureCount, results: Array<{variableId, modeId, error?}>}. Example: set_multiple_variable_values(updates=[{variableId:'123:45', modeId:'456:78', value:{r:1,g:0,b:0}}, {variableId:'123:45', modeId:'789:01', value:{r:0.8,g:0,b:0}}]). Related: set_variable_value, create_multiple_variables",
+  "Batch set variable values across modes.",
   {
     updates: z.array(z.object({
-      variableId: z.string().describe("The ID of the variable to update"),
+      variableId: z.string(),
       modeId: z.string().describe("The mode ID to set the value for"),
       value: z.union([
         rgbaSchema,
@@ -1602,23 +1349,9 @@ server.tool(
   async ({ updates }: { updates: Array<{ variableId: string; modeId: string; value: unknown }> }) => {
     try {
       const result = await sendCommandToFigma("set_multiple_variable_values", { updates });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting multiple variable values: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting multiple variable values", error);
     }
   }
 );
@@ -1626,30 +1359,16 @@ server.tool(
 // Delete Variable Tool
 server.tool(
   "delete_variable",
-  "Delete a variable from its collection permanently. All node bindings to this variable will be removed automatically. Returns: {success, variableId, variableName}. Example: delete_variable(variableId='123:45'). Related: create_variable, unbind_variable",
+  "Delete a variable from its collection.",
   {
-    variableId: z.string().describe("The ID of the variable to delete"),
+    variableId: z.string(),
   },
   async ({ variableId }: { variableId: string }) => {
     try {
       const result = await sendCommandToFigma("delete_variable", { variableId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting variable: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting variable", error);
     }
   }
 );
@@ -1657,30 +1376,16 @@ server.tool(
 // Get Bound Variables Tool
 server.tool(
   "get_bound_variables",
-  "Get all variable bindings for a node (which design tokens control its properties). Returns bound variables for fills, strokes, sizing, spacing, etc. Returns: {nodeId, bindings: {field: variableId}}. Example: get_bound_variables(nodeId='123:456'). Related: bind_variable, unbind_variable",
+  "Get all variable bindings on a node.",
   {
-    nodeId: z.string().describe("The ID of the node to check for bound variables"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: { nodeId: string }) => {
     try {
       const result = await sendCommandToFigma("get_bound_variables", { nodeId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting bound variables: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting bound variables", error);
     }
   }
 );
@@ -1688,9 +1393,9 @@ server.tool(
 // Bind Variable Tool
 server.tool(
   "bind_variable",
-  "Bind a variable (design token) to a node's property for automatic updates when the token or mode changes. Supports fills, strokes, sizing, spacing, opacity, and more. Auto-selects node. Returns: {success, nodeId, field, variableId}. Example: bind_variable(nodeId='123:456', field='fills', variableId='789:012'). Related: get_bound_variables, unbind_variable",
+  "Bind a variable to a node property.",
   {
-    nodeId: z.string().describe("The ID of the node to bind the variable to"),
+    nodeId: z.string(),
     field: z.enum([
       "fills", "strokes", "strokeWeight", "cornerRadius",
       "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
@@ -1698,28 +1403,14 @@ server.tool(
       "itemSpacing", "counterAxisSpacing", "opacity",
       "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"
     ]).describe("The field to bind the variable to"),
-    variableId: z.string().describe("The ID of the variable to bind"),
+    variableId: z.string(),
   },
   async ({ nodeId, field, variableId }: { nodeId: string; field: string; variableId: string }) => {
     try {
       const result = await sendCommandToFigma("bind_variable", { nodeId, field, variableId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error binding variable: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("binding variable", error);
     }
   }
 );
@@ -1727,9 +1418,9 @@ server.tool(
 // Unbind Variable Tool
 server.tool(
   "unbind_variable",
-  "Remove a variable binding from a node's property. Node retains current value as static (no longer updates with token/mode changes). Auto-selects node. Returns: {success, nodeId, field}. Example: unbind_variable(nodeId='123:456', field='fills'). Related: bind_variable, get_bound_variables",
+  "Remove a variable binding from a node property.",
   {
-    nodeId: z.string().describe("The ID of the node to unbind the variable from"),
+    nodeId: z.string(),
     field: z.enum([
       "fills", "strokes", "strokeWeight", "cornerRadius",
       "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
@@ -1741,23 +1432,9 @@ server.tool(
   async ({ nodeId, field }: { nodeId: string; field: string }) => {
     try {
       const result = await sendCommandToFigma("unbind_variable", { nodeId, field });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error unbinding variable: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("unbinding variable", error);
     }
   }
 );
@@ -1765,29 +1442,14 @@ server.tool(
 // Get Styles Tool
 server.tool(
   "get_styles",
-  "Get all local styles (text, paint, effect, grid) from the document. Returns: {count, styles: Array<{id, name, type, key}>}. Use to discover available styles before applying them. Related: get_text_styles, get_paint_styles, get_effect_styles, get_grid_styles for filtered results.",
+  "Get all local styles (text, paint, effect, grid).",
   {},
   async () => {
     try {
       const result = await sendCommandToFigma("get_styles");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting styles: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting styles", error);
     }
   }
 );
@@ -1795,29 +1457,14 @@ server.tool(
 // Get Local Components Tool
 server.tool(
   "get_local_components",
-  "Get all local components and component sets defined in the document. Returns: {count, components: Array<{id, name, key, type, description}>}. Use to discover available components before creating instances. Example: get_local_components() to list all reusable components.",
+  "Get all local components and component sets.",
   {},
   async () => {
     try {
       const result = await sendCommandToFigma("get_local_components");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting local components: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting local components", error);
     }
   }
 );
@@ -1829,7 +1476,7 @@ server.tool(
 // Create Component Tool
 server.tool(
   "create_component",
-  "Convert an existing node (frame/group/shape) into a reusable component. All future instances update when main component changes. Auto-selects component. Returns: {id, name, key, type}. Example: create_component(nodeId='123:456', name='Button'). Related: create_component_instance, create_component_set",
+  "Convert a node into a reusable component.",
   {
     nodeId: z.string().describe("The ID of the node to convert to a component (must be a FRAME, GROUP, or shape)"),
     name: z.string().optional().describe("Optional name for the component"),
@@ -1837,23 +1484,9 @@ server.tool(
   async ({ nodeId, name }: { nodeId: string; name?: string }) => {
     try {
       const result = await sendCommandToFigma("create_component", { nodeId, name });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating component: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating component", error);
     }
   }
 );
@@ -1861,7 +1494,7 @@ server.tool(
 // Create Component Set Tool
 server.tool(
   "create_component_set",
-  "Combine multiple components into a variant set (component with switchable states). Components need variant-compatible names like 'Button/Size=Small'. Perfect for button variants, icon families, state variations. Auto-selects set. Returns: {id, name, key, variantCount}. Example: create_component_set(componentIds=['123:1', '123:2']). Related: create_component, add_component_property",
+  "Combine components into a variant set.",
   {
     componentIds: z.array(z.string()).describe("Array of component IDs to combine into a variant set (minimum 2)"),
     name: z.string().optional().describe("Optional name for the component set"),
@@ -1869,23 +1502,9 @@ server.tool(
   async ({ componentIds, name }: { componentIds: string[]; name?: string }) => {
     try {
       const result = await sendCommandToFigma("create_component_set", { componentIds, name });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating component set: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating component set", error);
     }
   }
 );
@@ -1893,30 +1512,16 @@ server.tool(
 // Get Component Properties Tool
 server.tool(
   "get_component_properties",
-  "Get all properties defined on a component/component set (BOOLEAN toggles, TEXT fields, INSTANCE_SWAP slots, VARIANT options). Returns: {componentId, properties: {name, type, defaultValue, variantOptions}}. Example: get_component_properties(componentId='123:456'). Related: add_component_property, set_component_property_value",
+  "Get properties on a component or component set.",
   {
     componentId: z.string().describe("The ID of the component or component set"),
   },
   async ({ componentId }: { componentId: string }) => {
     try {
       const result = await sendCommandToFigma("get_component_properties", { componentId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting component properties: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting component properties", error);
     }
   }
 );
@@ -1924,7 +1529,7 @@ server.tool(
 // Add Component Property Tool
 server.tool(
   "add_component_property",
-  "Add a customizable property to a component/set for instance control. BOOLEAN for show/hide, TEXT for labels, INSTANCE_SWAP for icon slots, VARIANT for state switching. Returns: {success, componentId, propertyName, propertyType}. Example: add_component_property(componentId='123:456', propertyName='showIcon', propertyType='BOOLEAN', defaultValue=true). Related: set_component_property_value, get_component_properties",
+  "Add a property (BOOLEAN/TEXT/INSTANCE_SWAP/VARIANT).",
   {
     componentId: z.string().describe("The ID of the component or component set"),
     propertyName: z.string().describe("Name of the property (e.g., 'showIcon', 'label', 'iconSlot')"),
@@ -1953,23 +1558,9 @@ server.tool(
         preferredValues,
         variantOptions,
       });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error adding component property: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("adding component property", error);
     }
   }
 );
@@ -1977,7 +1568,7 @@ server.tool(
 // Set Component Property Value Tool
 server.tool(
   "set_component_property_value",
-  "Set a property value on a component instance to customize it (toggle visibility, change text, swap icon, switch variant). Auto-selects instance. Returns: {success, instanceId, propertyName, value}. Example: set_component_property_value(instanceId='123:456', propertyName='showIcon', value=false). Related: add_component_property, get_component_properties",
+  "Set a property value on a component instance.",
   {
     instanceId: z.string().describe("The ID of the component instance"),
     propertyName: z.string().describe("Name of the property to set"),
@@ -1986,23 +1577,9 @@ server.tool(
   async ({ instanceId, propertyName, value }: { instanceId: string; propertyName: string; value: string | boolean }) => {
     try {
       const result = await sendCommandToFigma("set_component_property_value", { instanceId, propertyName, value });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting component property value: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting component property value", error);
     }
   }
 );
@@ -2010,7 +1587,7 @@ server.tool(
 // Set Component Property References Tool
 server.tool(
   "set_component_property_references",
-  "Bind a nested instance node inside a component to an INSTANCE_SWAP property via componentPropertyReferences. This wires up the instance so it becomes swappable on any instance of the parent component. Returns: {success, nodeId, references}. Example: set_component_property_references(nodeId='36:100', references={mainComponent: 'leadingIcon#36:0'}). Related: add_component_property, get_component_properties",
+  "Wire a nested instance to component properties.",
   {
     nodeId: z.string().describe("The ID of the instance node inside the component to bind"),
     references: z.record(z.string(), z.string()).describe("Property references map, e.g. { mainComponent: 'propertyName#hash' } for INSTANCE_SWAP binding"),
@@ -2018,23 +1595,9 @@ server.tool(
   async ({ nodeId, references }: { nodeId: string; references: Record<string, string> }) => {
     try {
       const result = await sendCommandToFigma("set_component_property_references", { nodeId, references });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting component property references: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting component property references", error);
     }
   }
 );
@@ -2042,7 +1605,7 @@ server.tool(
 // Get Annotations Tool
 server.tool(
   "get_annotations",
-  "Get Figma dev mode annotations from a node or entire document. Includes categories and labels. Returns: {annotations: Array<{id, label, nodeId}>, categories}. Example: get_annotations(nodeId='123:1', includeCategories=true). Use to read design specs and notes.",
+  "Get dev mode annotations from a node.",
   {
     nodeId: z.string().describe("node ID to get annotations for specific node"),
     includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
@@ -2053,23 +1616,9 @@ server.tool(
         nodeId,
         includeCategories
       });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("getting annotations", error);
     }
   }
 );
@@ -2077,9 +1626,9 @@ server.tool(
 // Set Annotation Tool
 server.tool(
   "set_annotation",
-  "Create or update a dev mode annotation on a node. Supports markdown formatting. Returns: {success, annotationId}. Example: set_annotation(nodeId='123:1', labelMarkdown='**Primary button** - Use for main CTAs', categoryId='cat_1'). Use for design documentation.",
+  "Create or update an annotation on a node.",
   {
-    nodeId: z.string().describe("The ID of the node to annotate"),
+    nodeId: z.string(),
     annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
     labelMarkdown: z.string().describe("The annotation text in markdown format"),
     categoryId: z.string().optional().describe("The ID of the annotation category"),
@@ -2096,23 +1645,9 @@ server.tool(
         categoryId,
         properties
       });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
+      return formatJsonResponse(result);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("setting annotation", error);
     }
   }
 );
@@ -2131,15 +1666,15 @@ interface SetMultipleAnnotationsParams {
 // Set Multiple Annotations Tool
 server.tool(
   "set_multiple_annotations",
-  "Batch create/update multiple annotations efficiently. More performant than individual calls. Returns: {success, count, results}. Example: set_multiple_annotations(nodeId='parent', annotations=[{nodeId:'123:1', labelMarkdown:'Button'}, {nodeId:'123:2', labelMarkdown:'Icon'}]). Use for bulk documentation.",
+  "Batch create/update annotations.",
   {
     nodeId: z
       .string()
-      .describe("The ID of the node containing the elements to annotate"),
+      ,
     annotations: z
       .array(
         z.object({
-          nodeId: z.string().describe("The ID of the node to annotate"),
+          nodeId: z.string(),
           labelMarkdown: z.string().describe("The annotation text in markdown format"),
           categoryId: z.string().optional().describe("The ID of the annotation category"),
           annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
@@ -2228,15 +1763,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting multiple annotations: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting multiple annotations", error);
     }
   }
 );
@@ -2244,12 +1771,12 @@ server.tool(
 // Create Component Instance Tool
 server.tool(
   "create_component_instance",
-  "Create a new instance (copy) of a component. Provide componentKey (for remote/library components) or componentId (for local components by node ID). Returns: {id, name, componentId}. Example: create_component_instance(componentId='36:31762', parentId='36:26473'). Related: get_local_components",
+  "Create an instance of a component by ID or key.",
   {
     componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
     componentId: z.string().optional().describe("Node ID of a local component to instantiate (preferred for local components)"),
-    x: z.number().optional().describe("X position").default(0),
-    y: z.number().optional().describe("Y position").default(0),
+    x: z.number().optional().default(0),
+    y: z.number().optional().default(0),
     parentId: z.string().optional().describe("Parent node ID to append the instance into (e.g., a frame or component variant)"),
   },
   async ({ componentKey, componentId, x, y, parentId }: any) => {
@@ -2271,15 +1798,7 @@ server.tool(
         ]
       }
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating component instance: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating component instance", error);
     }
   }
 );
@@ -2287,7 +1806,7 @@ server.tool(
 // Create Multiple Component Instances Tool (batch)
 server.tool(
   "create_multiple_component_instances",
-  "Create multiple component instances in bulk with auto-layout insertIndex support. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalInstances, results: [{instanceId, parentId, error?}]}. Example: create_multiple_component_instances(instances=[{componentId:'36:31762', parentId:'36:26473', name:'leadingIcon', insertIndex:0, visible:false}]). Related: create_component_instance, set_multiple_component_property_references",
+  "Batch create component instances with progress.",
   {
     instances: z.array(z.object({
       componentId: z.string().optional().describe("Node ID of a local component to instantiate"),
@@ -2311,19 +1830,12 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating component instances: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating component instances", error);
     }
   }
 );
@@ -2331,7 +1843,7 @@ server.tool(
 // Set Multiple Component Property References Tool (batch)
 server.tool(
   "set_multiple_component_property_references",
-  "Bind multiple nested instance nodes to INSTANCE_SWAP and BOOLEAN properties in bulk via componentPropertyReferences. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalBindings, results: [{nodeId, error?}]}. Example: set_multiple_component_property_references(bindings=[{nodeId:'36:100', references:{mainComponent:'leadingIcon#36:0', visible:'showLeadingIcon#36:0'}}]). Related: set_component_property_references, add_component_property",
+  "Batch wire instances to component properties.",
   {
     bindings: z.array(z.object({
       nodeId: z.string().describe("ID of the instance node inside the component to bind"),
@@ -2351,19 +1863,12 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting component property references: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting component property references", error);
     }
   }
 );
@@ -2371,7 +1876,7 @@ server.tool(
 // Copy Instance Overrides Tool
 server.tool(
   "get_instance_overrides",
-  "Capture all customizations (text, properties, styles) from a component instance for bulk application. Use with set_instance_overrides to clone instance configurations. Returns: {success, message, sourceInstanceId, mainComponentId, overridesCount}. Example: get_instance_overrides(nodeId='123:456'). Related: set_instance_overrides",
+  "Capture overrides from a component instance.",
   {
     nodeId: z.string().optional().describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
   },
@@ -2393,14 +1898,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error copying instance overrides: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("copying instance overrides", error);
     }
   }
 );
@@ -2408,7 +1906,7 @@ server.tool(
 // Set Instance Overrides Tool
 server.tool(
   "set_instance_overrides",
-  "Apply captured instance customizations to multiple target instances in bulk (swaps them to source component and applies all overrides). Perfect for propagating design updates. Auto-selects targets. Returns: {success, totalCount, results: Array<{success, instanceId, appliedCount}>}. Example: set_instance_overrides(sourceInstanceId='123:456', targetNodeIds=['789:0', '789:1']). Related: get_instance_overrides",
+  "Apply captured overrides to target instances.",
   {
     sourceInstanceId: z.string().describe("ID of the source component instance"),
     targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
@@ -2442,14 +1940,7 @@ server.tool(
         };
       }
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting instance overrides: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("setting instance overrides", error);
     }
   }
 );
@@ -2458,10 +1949,10 @@ server.tool(
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
-  "Set corner radius for rounded corners on shapes and frames. Optionally specify which corners to round. Auto-selects and shows radius value. Returns: {id, name, cornerRadius}. Example: set_corner_radius(nodeId='123:1', radius=12, corners=[true, true, false, false]) for top corners only.",
+  "Set corner radius, optionally per-corner.",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
-    radius: z.number().min(0).describe("Corner radius value"),
+    nodeId: z.string(),
+    radius: z.number().min(0),
     corners: z
       .array(z.boolean())
       .length(4)
@@ -2487,15 +1978,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting corner radius: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting corner radius", error);
     }
   }
 );
@@ -2503,10 +1986,10 @@ server.tool(
 // Set Opacity Tool
 server.tool(
   "set_opacity",
-  "Set the opacity/transparency of a node from 0 (invisible) to 1 (solid). Auto-selects and shows percentage. Returns: {id, name, opacity}. Example: set_opacity(nodeId='123:1', opacity=0.5) for 50% transparency. Use for fade effects or disabled states.",
+  "Set node opacity (0=transparent, 1=opaque).",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
-    opacity: z.number().min(0).max(1).describe("Opacity value (0-1, where 0 is fully transparent and 1 is fully opaque)"),
+    nodeId: z.string(),
+    opacity: z.number().min(0).max(1).describe("Opacity (0-1)"),
   },
   async ({ nodeId, opacity }: any) => {
     try {
@@ -2524,15 +2007,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting opacity: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting opacity", error);
     }
   }
 );
@@ -2540,10 +2015,10 @@ server.tool(
 // Group Nodes Tool
 server.tool(
   "group_nodes",
-  "Combine multiple nodes into a group for organization. All nodes must share the same parent. Auto-selects group. Returns: {success, groupId, groupName, nodeCount}. Example: group_nodes(nodeIds=['123:1', '123:2', '123:3'], name='Icon Set'). Related: ungroup_node.",
+  "Group multiple nodes into a single group.",
   {
-    nodeIds: z.array(z.string()).min(2).describe("Array of node IDs to group together (minimum 2 nodes)"),
-    name: z.string().optional().describe("Optional name for the group (default: 'Group')"),
+    nodeIds: z.array(z.string()).min(2),
+    name: z.string().optional().describe("Group name"),
   },
   async ({ nodeIds, name }: any) => {
     try {
@@ -2561,15 +2036,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error grouping nodes: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("grouping nodes", error);
     }
   }
 );
@@ -2577,9 +2044,9 @@ server.tool(
 // Ungroup Node Tool
 server.tool(
   "ungroup_node",
-  "Dissolve a group and move its children to the group's parent level. Group node is removed. Auto-selects children. Returns: {success, ungroupedCount, childIds}. Example: ungroup_node(nodeId='123:1'). Use to flatten hierarchy. Related: group_nodes.",
+  "Dissolve a group, moving children to parent.",
   {
-    nodeId: z.string().describe("The ID of the group node to ungroup"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -2596,15 +2063,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error ungrouping node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("ungrouping node", error);
     }
   }
 );
@@ -2616,9 +2075,9 @@ server.tool(
 // Get Available Fonts Tool
 server.tool(
   "get_available_fonts",
-  "Get all available fonts in Figma with their styles (Regular, Bold, Italic, etc.). Optional filter by family name. Returns: {fonts: Array<{family, styles}>}. Example: get_available_fonts(filter='Roboto'). Use before create_text or set_text_properties. Related: load_font, create_text",
+  "List available fonts, optionally filtered by name.",
   {
-    filter: z.string().optional().describe("Optional filter to search fonts by family name (case-insensitive)"),
+    filter: z.string().optional().describe("Filter by family name"),
   },
   async ({ filter }: any) => {
     try {
@@ -2635,14 +2094,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting available fonts: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting available fonts", error);
     }
   }
 );
@@ -2650,10 +2102,10 @@ server.tool(
 // Load Font Tool
 server.tool(
   "load_font",
-  "Load a font into memory for immediate use (required before using custom fonts in text operations). Loads specific family+style combination. Returns: {success, family, style}. Example: load_font(family='Roboto', style='Bold'). Call before create_text or set_text_properties. Related: get_available_fonts",
+  "Load a font family+style for text operations.",
   {
-    family: z.string().describe("The font family name (e.g., 'Roboto', 'Open Sans')"),
-    style: z.string().optional().describe("The font style (e.g., 'Regular', 'Bold', 'Italic'). Default: 'Regular'"),
+    family: z.string().describe("Font family name"),
+    style: z.string().optional().describe("Font style (default: Regular)"),
   },
   async ({ family, style }: any) => {
     try {
@@ -2671,14 +2123,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error loading font: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("loading font", error);
     }
   }
 );
@@ -2686,7 +2131,7 @@ server.tool(
 // Get Text Styles Tool
 server.tool(
   "get_text_styles",
-  "Get all local text (typography) styles from the document. Returns: {count, styles: Array<{id, name, key, fontFamily, fontSize, fontWeight, lineHeight}>}. Use to discover available text styles before applying. Related: create_text_style, apply_text_style.",
+  "Get all local text/typography styles.",
   {},
   async () => {
     try {
@@ -2705,14 +2150,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting text styles: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting text styles", error);
     }
   }
 );
@@ -2720,7 +2158,7 @@ server.tool(
 // Create Text Style Tool
 server.tool(
   "create_text_style",
-  "Create a reusable text/typography style with font, size, line height, etc. Returns: {id, name, fontFamily, fontSize}. Example: create_text_style(name='Heading 1', fontFamily='Inter', fontSize=32, fontWeight=700, lineHeight=40). Related: apply_text_style to use it.",
+  "Create a reusable text style with font properties.",
   {
     name: z.string().describe("Name for the text style (e.g., 'Heading 1', 'Body Text')"),
     fontFamily: z.string().optional().describe("Font family (default: 'Inter')"),
@@ -2755,14 +2193,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating text style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating text style", error);
     }
   }
 );
@@ -2770,9 +2201,9 @@ server.tool(
 // Apply Text Style Tool
 server.tool(
   "apply_text_style",
-  "Apply a predefined text style to a text node by ID or name. Auto-selects node. Returns: {success, nodeId, nodeName, styleId, styleName}. Example: apply_text_style(nodeId='123:1', styleName='Heading 1'). Related: get_text_styles to list available styles.",
+  "Apply a text style to a text node by ID or name.",
   {
-    nodeId: z.string().describe("The ID of the text node to style"),
+    nodeId: z.string(),
     styleId: z.string().optional().describe("The ID of the text style to apply"),
     styleName: z.string().optional().describe("The name of the text style to apply (alternative to styleId)"),
   },
@@ -2793,14 +2224,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying text style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("applying text style", error);
     }
   }
 );
@@ -2808,9 +2232,9 @@ server.tool(
 // Set Text Properties Tool
 server.tool(
   "set_text_properties",
-  "Directly set typography properties (font, size, line height, alignment, etc.) on a text node without using styles. Returns: {success, nodeId}. Example: set_text_properties(nodeId='123:1', fontSize=18, lineHeight=24, textAlignHorizontal='CENTER'). Related: apply_text_style for style-based approach.",
+  "Set typography properties directly on a text node.",
   {
-    nodeId: z.string().describe("The ID of the text node to modify"),
+    nodeId: z.string(),
     fontFamily: z.string().optional().describe("Font family (e.g., 'Roboto', 'Open Sans')"),
     fontStyle: z.string().optional().describe("Font style (e.g., 'Regular', 'Bold', 'Italic')"),
     fontSize: z.number().positive().optional().describe("Font size in pixels"),
@@ -2847,14 +2271,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting text properties: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting text properties", error);
     }
   }
 );
@@ -2866,7 +2283,7 @@ server.tool(
 // Get Paint Styles Tool
 server.tool(
   "get_paint_styles",
-  "Get all local paint (color/gradient) styles from the document. Returns: {count, styles: Array<{id, name, type, color}>}. Use to discover available color styles before applying. Example: get_paint_styles() to list all reusable colors. Related: create_paint_style, apply_paint_style.",
+  "Get all local paint/color styles.",
   {},
   async () => {
     try {
@@ -2891,14 +2308,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting paint styles: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting paint styles", error);
     }
   }
 );
@@ -2906,7 +2316,7 @@ server.tool(
 // Create Paint Style Tool
 server.tool(
   "create_paint_style",
-  "Create a reusable color style for fills and strokes. Shows notification on creation. Returns: {id, name, color}. Example: create_paint_style(name='Primary/500', color={r:0.2, g:0.5, b:1, a:1}). Use for design system colors. Related: apply_paint_style.",
+  "Create a reusable solid color style.",
   {
     name: z.string().describe("Name for the paint style (e.g., 'Primary/500', 'Background/Light')"),
     color: rgbaSchema.describe("RGBA color values (each component 0-1)"),
@@ -2933,14 +2343,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating paint style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating paint style", error);
     }
   }
 );
@@ -2948,7 +2351,7 @@ server.tool(
 // Update Paint Style Tool
 server.tool(
   "update_paint_style",
-  "Modify an existing paint style's name or color value. All nodes using this style will update. Shows notification. Returns: {id, name, color}. Example: update_paint_style(styleId='S:abc123', color={r:0.3, g:0.6, b:1}). Use to refine design system.",
+  "Update a paint style name or color.",
   {
     styleId: z.string().describe("The ID of the paint style to update"),
     name: z.string().optional().describe("New name for the paint style"),
@@ -2981,14 +2384,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error updating paint style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("updating paint style", error);
     }
   }
 );
@@ -2996,9 +2392,9 @@ server.tool(
 // Apply Paint Style Tool
 server.tool(
   "apply_paint_style",
-  "Apply a predefined color style to a node's fills or strokes by ID or name. Auto-selects node. Returns: {success, nodeId, styleId, property}. Example: apply_paint_style(nodeId='123:1', styleName='Primary/500', property='fills'). Related: get_paint_styles.",
+  "Apply a paint style to fills or strokes.",
   {
-    nodeId: z.string().describe("The ID of the node to style"),
+    nodeId: z.string(),
     styleId: z.string().optional().describe("The ID of the paint style to apply"),
     styleName: z.string().optional().describe("The name of the paint style to apply (alternative to styleId)"),
     property: z.enum(["fills", "strokes"]).optional().describe("Which property to apply the style to (default: fills)"),
@@ -3021,14 +2417,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying paint style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("applying paint style", error);
     }
   }
 );
@@ -3036,7 +2425,7 @@ server.tool(
 // Delete Paint Style Tool
 server.tool(
   "delete_paint_style",
-  "Permanently remove a paint style from the document. Nodes using this style will revert to local colors. Shows confirmation notification. Returns: {success, styleId, styleName}. Example: delete_paint_style(styleId='S:abc123'). Use with caution.",
+  "Delete a paint style from the document.",
   {
     styleId: z.string().describe("The ID of the paint style to delete"),
   },
@@ -3055,14 +2444,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting paint style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting paint style", error);
     }
   }
 );
@@ -3070,9 +2452,9 @@ server.tool(
 // Set Gradient Fill Tool
 server.tool(
   "set_gradient_fill",
-  "Apply a gradient fill (linear, radial, angular, or diamond) with multiple color stops. Auto-selects node. Returns: {success, nodeId, gradientType, stopsCount}. Example: set_gradient_fill(nodeId='123:1', gradientType='LINEAR', stops=[{position:0, color:{r:1,g:0,b:0}}, {position:1, color:{r:0,g:0,b:1}}], angle=45)",
+  "Apply a gradient fill with color stops.",
   {
-    nodeId: z.string().describe("The ID of the node to apply the gradient to"),
+    nodeId: z.string(),
     gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).describe("Type of gradient"),
     stops: z.array(z.object({
       position: z.number().min(0).max(1).describe("Position of the stop (0-1)"),
@@ -3098,14 +2480,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting gradient fill: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting gradient fill", error);
     }
   }
 );
@@ -3117,7 +2492,7 @@ server.tool(
 // Get Effect Styles Tool
 server.tool(
   "get_effect_styles",
-  "Get all local effect styles (shadows, blurs) from the document. Returns: {count, styles: Array<{id, name, effects}>}. Use to discover available effect styles before applying. Example: get_effect_styles() to list all shadow/blur styles. Related: create_effect_style, apply_effect_style.",
+  "Get all local effect styles (shadows, blurs).",
   {},
   async () => {
     try {
@@ -3144,14 +2519,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting effect styles: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting effect styles", error);
     }
   }
 );
@@ -3159,7 +2527,7 @@ server.tool(
 // Create Effect Style Tool
 server.tool(
   "create_effect_style",
-  "Create a reusable effect style containing shadows and/or blurs. Shows notification. Returns: {id, name, effects}. Example: create_effect_style(name='Card Shadow', effects=[{type:'DROP_SHADOW', color:{r:0,g:0,b:0,a:0.2}, offsetY:4, radius:8}]). Related: apply_effect_style.",
+  "Create a reusable effect style (shadows/blurs).",
   {
     name: z.string().describe("Name for the effect style (e.g., 'Shadow/Small', 'Blur/Background')"),
     effects: z.array(z.object({
@@ -3188,14 +2556,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating effect style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating effect style", error);
     }
   }
 );
@@ -3203,9 +2564,9 @@ server.tool(
 // Apply Effect Style Tool
 server.tool(
   "apply_effect_style",
-  "Apply a predefined effect style to a node by ID or name. Auto-selects node. Returns: {success, nodeId, styleId, styleName}. Example: apply_effect_style(nodeId='123:1', styleName='Card Shadow'). Related: get_effect_styles.",
+  "Apply an effect style to a node by ID or name.",
   {
-    nodeId: z.string().describe("The ID of the node to apply the effect style to"),
+    nodeId: z.string(),
     styleId: z.string().optional().describe("The ID of the effect style to apply"),
     styleName: z.string().optional().describe("The name of the effect style to apply (alternative to styleId)"),
   },
@@ -3226,14 +2587,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying effect style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("applying effect style", error);
     }
   }
 );
@@ -3241,7 +2595,7 @@ server.tool(
 // Delete Effect Style Tool
 server.tool(
   "delete_effect_style",
-  "Permanently remove an effect style from the document. Nodes using this style will keep the effects locally. Shows confirmation. Returns: {success, styleId, styleName}. Example: delete_effect_style(styleId='S:abc123').",
+  "Delete an effect style from the document.",
   {
     styleId: z.string().describe("The ID of the effect style to delete"),
   },
@@ -3260,14 +2614,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting effect style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting effect style", error);
     }
   }
 );
@@ -3275,9 +2622,9 @@ server.tool(
 // Set Effects Tool
 server.tool(
   "set_effects",
-  "Replace all effects on a node with a new set. Clears existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: set_effects(nodeId='123:1', effects=[{type:'DROP_SHADOW',...}, {type:'LAYER_BLUR',...}]). Use for custom effect combinations.",
+  "Replace all effects on a node with a new set.",
   {
-    nodeId: z.string().describe("The ID of the node to apply effects to"),
+    nodeId: z.string(),
     effects: z.array(z.object({
       type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]).describe("Type of effect"),
       color: optionalRgbaSchema("Color for shadow effects"),
@@ -3304,14 +2651,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting effects: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting effects", error);
     }
   }
 );
@@ -3319,9 +2659,9 @@ server.tool(
 // Add Drop Shadow Tool
 server.tool(
   "add_drop_shadow",
-  "Add a drop shadow (outer shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_drop_shadow(nodeId='123:1', color={r:0,g:0,b:0,a:0.25}, offsetY=4, radius=8). Use for elevation effects.",
+  "Add a drop shadow without removing existing effects.",
   {
-    nodeId: z.string().describe("The ID of the node to add the shadow to"),
+    nodeId: z.string(),
     color: rgbaSchema.describe("Shadow color"),
     offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
     offsetY: z.number().optional().describe("Vertical offset in pixels (default: 4)"),
@@ -3350,14 +2690,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error adding drop shadow: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("adding drop shadow", error);
     }
   }
 );
@@ -3365,9 +2698,9 @@ server.tool(
 // Add Inner Shadow Tool
 server.tool(
   "add_inner_shadow",
-  "Add an inner shadow (inset shadow) to a node without removing existing effects. Auto-selects node. Returns: {success, nodeId, effectsCount}. Example: add_inner_shadow(nodeId='123:1', color:{r:0,g:0,b:0,a:0.15}, offsetY:2, radius=4). Use for pressed/inset states.",
+  "Add an inner shadow without removing existing effects.",
   {
-    nodeId: z.string().describe("The ID of the node to add the inner shadow to"),
+    nodeId: z.string(),
     color: rgbaSchema.describe("Shadow color"),
     offsetX: z.number().optional().describe("Horizontal offset in pixels (default: 0)"),
     offsetY: z.number().optional().describe("Vertical offset in pixels (default: 2)"),
@@ -3396,14 +2729,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error adding inner shadow: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("adding inner shadow", error);
     }
   }
 );
@@ -3411,9 +2737,9 @@ server.tool(
 // Add Layer Blur Tool
 server.tool(
   "add_layer_blur",
-  "Add a layer blur that blurs the node's content itself. Auto-selects and shows radius. Returns: {success, nodeId, effectsCount}. Example: add_layer_blur(nodeId='123:1', radius=10). Use for background images or disabled states. Related: add_background_blur.",
+  "Add a layer blur effect to a node.",
   {
-    nodeId: z.string().describe("The ID of the node to add the blur to"),
+    nodeId: z.string(),
     radius: z.number().min(0).describe("Blur radius in pixels"),
     visible: z.boolean().optional().describe("Whether the blur is visible (default: true)"),
   },
@@ -3434,14 +2760,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error adding layer blur: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("adding layer blur", error);
     }
   }
 );
@@ -3449,9 +2768,9 @@ server.tool(
 // Add Background Blur Tool
 server.tool(
   "add_background_blur",
-  "Add a background blur that blurs content behind the node (frosted glass effect). Auto-selects and shows radius. Returns: {success, nodeId, effectsCount}. Example: add_background_blur(nodeId='123:1', radius=20). Use for modal overlays and glass morphism. Related: add_layer_blur.",
+  "Add a background blur (frosted glass) to a node.",
   {
-    nodeId: z.string().describe("The ID of the node to add the background blur to"),
+    nodeId: z.string(),
     radius: z.number().min(0).describe("Blur radius in pixels"),
     visible: z.boolean().optional().describe("Whether the blur is visible (default: true)"),
   },
@@ -3472,14 +2791,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error adding background blur: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("adding background blur", error);
     }
   }
 );
@@ -3491,9 +2803,9 @@ server.tool(
 // Get Constraints Tool
 server.tool(
   "get_constraints",
-  "Get the responsive layout constraints of a node (how it behaves when parent resizes). Returns: {nodeId, nodeName, horizontal: 'MIN'|'CENTER'|'MAX'|'STRETCH'|'SCALE', vertical: same}. Example: get_constraints(nodeId='123:456'). Related: set_constraints",
+  "Get responsive layout constraints of a node.",
   {
-    nodeId: z.string().describe("The ID of the node to get constraints for"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -3508,14 +2820,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting constraints: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting constraints", error);
     }
   }
 );
@@ -3523,11 +2828,11 @@ server.tool(
 // Set Constraints Tool
 server.tool(
   "set_constraints",
-  "Set responsive layout constraints (how node responds to parent resize). MIN=pin left/top, MAX=pin right/bottom, CENTER=stay centered, STRETCH=resize with parent, SCALE=scale proportionally. Auto-selects node. Returns: {nodeId, nodeName, horizontal, vertical}. Example: set_constraints(nodeId='123:456', horizontal='MIN', vertical='MIN'). Related: get_constraints",
+  "Set responsive constraints (MIN/CENTER/MAX/STRETCH/SCALE).",
   {
-    nodeId: z.string().describe("The ID of the node to set constraints on"),
-    horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Horizontal constraint: MIN (left), CENTER, MAX (right), STRETCH, or SCALE"),
-    vertical: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Vertical constraint: MIN (top), CENTER, MAX (bottom), STRETCH, or SCALE"),
+    nodeId: z.string(),
+    horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional(),
+    vertical: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional(),
   },
   async ({ nodeId, horizontal, vertical }: any) => {
     try {
@@ -3546,14 +2851,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting constraints: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting constraints", error);
     }
   }
 );
@@ -3565,7 +2863,7 @@ server.tool(
 // Get Grid Styles Tool
 server.tool(
   "get_grid_styles",
-  "Get all local grid styles (column/row/uniform grids) from the Figma document. Each style can contain multiple grid configurations. Returns: {count, styles: Array<{id, name, key, grids}>}. Example: Use to discover available grid styles before applying. Related: create_grid_style, apply_grid_style",
+  "Get all local grid styles from the document.",
   {},
   async () => {
     try {
@@ -3590,14 +2888,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting grid styles: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting grid styles", error);
     }
   }
 );
@@ -3605,7 +2896,7 @@ server.tool(
 // Create Grid Style Tool
 server.tool(
   "create_grid_style",
-  "Create a new reusable grid style with columns, rows, or uniform grids. Can combine multiple grid types in one style (e.g., 12-column + baseline grid). Returns: {id, name, key, grids}. Example: create_grid_style(name='12-Column', grids=[{pattern:'COLUMNS', count:12, gutterSize:20}]). Related: apply_grid_style, get_grid_styles",
+  "Create a reusable grid style (columns/rows/grid).",
   {
     name: z.string().describe("Name for the grid style (e.g., '12-Column Grid', 'Mobile Layout')"),
     grids: z.array(z.object({
@@ -3635,14 +2926,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating grid style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating grid style", error);
     }
   }
 );
@@ -3650,9 +2934,9 @@ server.tool(
 // Apply Grid Style Tool
 server.tool(
   "apply_grid_style",
-  "Apply a saved grid style to a frame for consistent layout grids. Specify by styleId or styleName. Auto-selects and scrolls to frame. Returns: {success, nodeId, nodeName, styleName}. Example: apply_grid_style(nodeId='123:456', styleName='12-Column Grid'). Related: get_grid_styles, set_layout_grids",
+  "Apply a grid style to a frame.",
   {
-    nodeId: z.string().describe("The ID of the frame to apply the grid style to"),
+    nodeId: z.string(),
     styleId: z.string().optional().describe("The ID of the grid style to apply"),
     styleName: z.string().optional().describe("The name of the grid style to apply (alternative to styleId)"),
   },
@@ -3673,14 +2957,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying grid style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("applying grid style", error);
     }
   }
 );
@@ -3688,7 +2965,7 @@ server.tool(
 // Delete Grid Style Tool
 server.tool(
   "delete_grid_style",
-  "Delete a grid style from the document permanently. All frames using this style will retain their current grids as local overrides. Returns: {success, styleId, styleName}. Example: delete_grid_style(styleId='S:abc123'). Related: get_grid_styles, create_grid_style",
+  "Delete a grid style from the document.",
   {
     styleId: z.string().describe("The ID of the grid style to delete"),
   },
@@ -3705,14 +2982,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting grid style: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting grid style", error);
     }
   }
 );
@@ -3720,9 +2990,9 @@ server.tool(
 // Set Layout Grids Tool
 server.tool(
   "set_layout_grids",
-  "Set custom layout grids directly on a frame without creating a reusable style. Replaces all existing grids. Auto-selects and scrolls to frame. Returns: {success, nodeId, nodeName, gridsCount}. Example: set_layout_grids(nodeId='123:456', grids=[{pattern:'COLUMNS', count:12}]). Related: apply_grid_style, create_grid_style",
+  "Set layout grids directly on a frame.",
   {
-    nodeId: z.string().describe("The ID of the frame to set grids on"),
+    nodeId: z.string(),
     grids: z.array(z.object({
       pattern: z.enum(["COLUMNS", "ROWS", "GRID"]).describe("Type of grid"),
       sectionSize: z.number().optional().describe("Size of each section"),
@@ -3750,14 +3020,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting layout grids: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting layout grids", error);
     }
   }
 );
@@ -3877,11 +3140,12 @@ server.prompt(
 // Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
-  "Scan and retrieve all text nodes within a node (recursively searches all children). Processes in chunks for large designs. Returns: {success, totalNodes, chunks: Array<{nodeId, name, characters, fontSize, fontFamily, etc}>}. Example: scan_text_nodes(nodeId='123:456'). Use for text audits, content replacement planning. Related: set_multiple_text_contents",
+  "Recursively find all text nodes in a subtree.",
   {
     nodeId: z.string().describe("ID of the node to scan"),
+    maxResults: z.number().positive().optional().describe("Max nodes to return"),
   },
-  async ({ nodeId }: any) => {
+  async ({ nodeId, maxResults }: any) => {
     try {
       // Initial response to indicate we're starting the process
       const initialStatus = {
@@ -3892,6 +3156,7 @@ server.tool(
       // Use the plugin's scan_text_nodes function with chunking flag
       const result = await sendCommandToFigma("scan_text_nodes", {
         nodeId,
+        maxResults,
         useChunking: true,  // Enable chunking on the plugin side
         chunkSize: 10       // Process 10 nodes at a time
       });
@@ -3921,7 +3186,7 @@ server.tool(
             },
             {
               type: "text" as const,
-              text: JSON.stringify(typedResult.textNodes, null, 2)
+              text: JSON.stringify(typedResult.textNodes)
             }
           ],
         };
@@ -3933,20 +3198,12 @@ server.tool(
           initialStatus,
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("scanning text nodes", error);
     }
   }
 );
@@ -3954,12 +3211,13 @@ server.tool(
 // Node Type Scanning Tool
 server.tool(
   "scan_nodes_by_types",
-  "Find all descendant nodes matching specific types within a node (COMPONENT, INSTANCE, FRAME, TEXT, etc.). Returns: {success, count, matchingNodes: Array<{id, name, type, parent}>}. Example: scan_nodes_by_types(nodeId='123:456', types=['COMPONENT', 'INSTANCE']). Use for component inventory, batch operations. Related: get_node_info, scan_text_nodes",
+  "Find descendant nodes matching specific types.",
   {
     nodeId: z.string().describe("ID of the node to scan"),
-    types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])")
+    types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])"),
+    maxResults: z.number().positive().optional().describe("Max nodes to return"),
   },
-  async ({ nodeId, types }: any) => {
+  async ({ nodeId, types, maxResults }: any) => {
     try {
       // Initial response to indicate we're starting the process
       const initialStatus = {
@@ -3970,7 +3228,8 @@ server.tool(
       // Use the plugin's scan_nodes_by_types function
       const result = await sendCommandToFigma("scan_nodes_by_types", {
         parentNodeId: nodeId,
-        types
+        types,
+        maxResults,
       });
 
       // Format the response
@@ -4003,7 +3262,7 @@ server.tool(
             },
             {
               type: "text" as const,
-              text: JSON.stringify(typedResult.matchingNodes, null, 2)
+              text: JSON.stringify(typedResult.matchingNodes)
             }
           ],
         };
@@ -4015,20 +3274,12 @@ server.tool(
           initialStatus,
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error scanning nodes by types: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("scanning nodes by types", error);
     }
   }
 );
@@ -4036,7 +3287,7 @@ server.tool(
 // Bind Multiple Variables Tool (batch)
 server.tool(
   "bind_multiple_variables",
-  "Bind a variable to a field on multiple nodes in a single batch operation. Supports fills/strokes paint-level binding. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalBindings, results}. Example: bind_multiple_variables(bindings=[{nodeId:'1:2', field:'fills', variableId:'VariableID:41:33984'}, ...]). Related: bind_variable, get_bound_variables",
+  "Batch bind variables to node properties.",
   {
     bindings: z.array(z.object({
       nodeId: z.string().describe("ID of the node to bind"),
@@ -4057,19 +3308,12 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error binding variables: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("binding variables", error);
     }
   }
 );
@@ -4077,7 +3321,7 @@ server.tool(
 // Rename Node Tool
 server.tool(
   "rename_node",
-  "Rename a single node. Returns: {id, name}. Example: rename_node(nodeId='123:456', name='Icon/Navigation/arrow-left'). Use for organizing layer names. Related: rename_multiple_nodes, get_node_info",
+  "Rename a single node.",
   {
     nodeId: z.string().describe("ID of the node to rename"),
     name: z.string().describe("New name for the node"),
@@ -4093,19 +3337,12 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("renaming node", error);
     }
   }
 );
@@ -4113,7 +3350,7 @@ server.tool(
 // Rename Multiple Nodes Tool (batch)
 server.tool(
   "rename_multiple_nodes",
-  "Rename multiple nodes in a single batch operation. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalNodes, results}. Example: rename_multiple_nodes(renames=[{nodeId:'1:2', name:'Icon/Nav/arrow-left'}, ...]). Related: rename_node, scan_nodes_by_types",
+  "Batch rename multiple nodes.",
   {
     renames: z.array(z.object({
       nodeId: z.string().describe("ID of the node to rename"),
@@ -4133,19 +3370,69 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error renaming nodes: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("renaming nodes", error);
+    }
+  }
+);
+
+// Apply Style Batch Tool
+server.tool(
+  "apply_style_batch",
+  "Batch apply a style (text/paint/effect/grid) to multiple nodes.",
+  {
+    styleType: z.enum(["TEXT", "PAINT", "EFFECT", "GRID"]),
+    styleId: z.string().optional().describe("Style ID to apply"),
+    styleName: z.string().optional().describe("Style name to apply (alternative to styleId)"),
+    nodeIds: z.array(z.string()),
+    property: z.enum(["fills", "strokes"]).optional().describe("For PAINT styles only"),
+  },
+  async ({ styleType, styleId, styleName, nodeIds, property }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_style_batch", {
+        styleType,
+        styleId,
+        styleName,
+        nodeIds,
+        property,
+      });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalNodes: number };
+      return formatTextResponse(
+        `Applied ${styleType} style to ${typedResult.successCount}/${typedResult.totalNodes} nodes` +
+        (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : '')
+      );
+    } catch (error) {
+      return formatErrorResponse("applying style batch", error);
+    }
+  }
+);
+
+// Set Paint Batch Tool
+server.tool(
+  "set_paint_batch",
+  "Batch set fill/stroke colors on multiple nodes.",
+  {
+    updates: z.array(z.object({
+      nodeId: z.string(),
+      property: z.enum(["fills", "strokes"]).optional(),
+      color: rgbaSchema,
+      weight: z.number().optional(),
+    })),
+  },
+  async ({ updates }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_paint_batch", { updates });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalNodes: number };
+      return formatTextResponse(
+        `Set paint on ${typedResult.successCount}/${typedResult.totalNodes} nodes` +
+        (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : '')
+      );
+    } catch (error) {
+      return formatErrorResponse("setting paint batch", error);
     }
   }
 );
@@ -4153,7 +3440,7 @@ server.tool(
 // Delete Component Property Tool
 server.tool(
   "delete_component_property",
-  "Delete a property from a component or component set. Use the full property name including hash suffix (e.g. 'testBool#36:0'). Returns: {success, componentId, propertyName}. Example: delete_component_property(componentId='36:26518', propertyName='testBool#36:0'). Related: add_component_property, get_component_properties",
+  "Delete a property from a component.",
   {
     componentId: z.string().describe("ID of the component or component set"),
     propertyName: z.string().describe("Full property name to delete (including hash suffix, e.g. 'testBool#36:0')"),
@@ -4169,19 +3456,12 @@ server.tool(
           },
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting component property: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting component property", error);
     }
   }
 );
@@ -4189,7 +3469,7 @@ server.tool(
 // Edit Component Property Tool
 server.tool(
   "edit_component_property",
-  "Edit an existing property on a component/set IN-PLACE without breaking internal wiring. Use this to update preferredValues, defaultValue, or rename a property. Unlike delete+re-add, this preserves the link between the property definition and child nodes (critical for INSTANCE_SWAP). Returns: {success, componentId, propertyName, updatedPropertyName}. Example: edit_component_property(componentId='36:26518', propertyName='leadingIcon#36:46', preferredValues=[{type:'COMPONENT', key:'abc123'}]). Related: add_component_property, get_component_properties, delete_component_property",
+  "Edit a component property in-place.",
   {
     componentId: z.string().describe("ID of the component or component set"),
     propertyName: z.string().describe("Full property name including hash suffix (e.g. 'leadingIcon#36:46')"),
@@ -4219,19 +3499,12 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(result),
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error editing component property: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("editing component property", error);
     }
   }
 );
@@ -4373,7 +3646,7 @@ Remember that text is never just text—it's a core design element that must wor
 // Set Multiple Text Contents Tool
 server.tool(
   "set_multiple_text_contents",
-  "Set multiple text contents parallelly in a node",
+  "Batch update text on multiple text nodes.",
   {
     nodeId: z
       .string()
@@ -4466,15 +3739,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting multiple text contents: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting multiple text contents", error);
     }
   }
 );
@@ -4695,9 +3960,9 @@ This strategy enables transferring content and property overrides from a source 
 // Set Layout Mode Tool
 server.tool(
   "set_layout_mode",
-  "Enable/configure auto-layout on a frame (HORIZONTAL, VERTICAL, or NONE to disable). Optional wrap for multi-line layouts. Auto-selects frame. Returns: {name}. Example: set_layout_mode(nodeId='123:456', layoutMode='HORIZONTAL', layoutWrap='WRAP'). Related: set_padding, set_axis_align, set_item_spacing",
+  "Set auto-layout mode (HORIZONTAL/VERTICAL/NONE).",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
+    nodeId: z.string(),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).describe("Layout mode for the frame"),
     layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
   },
@@ -4718,14 +3983,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting layout mode: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting layout mode", error);
     }
   }
 );
@@ -4733,9 +3991,9 @@ server.tool(
 // Set Padding Tool
 server.tool(
   "set_padding",
-  "Set padding (inner spacing) on an auto-layout frame. Specify any/all sides independently. Auto-selects frame. Returns: {name}. Example: set_padding(nodeId='123:456', paddingTop=20, paddingLeft=20, paddingRight=20, paddingBottom=20). Related: set_layout_mode, set_item_spacing",
+  "Set padding on an auto-layout frame.",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
+    nodeId: z.string(),
     paddingTop: z.number().optional().describe("Top padding value"),
     paddingRight: z.number().optional().describe("Right padding value"),
     paddingBottom: z.number().optional().describe("Bottom padding value"),
@@ -4772,14 +4030,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting padding: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting padding", error);
     }
   }
 );
@@ -4787,17 +4038,17 @@ server.tool(
 // Set Axis Align Tool
 server.tool(
   "set_axis_align",
-  "Set content alignment in auto-layout frame. Primary axis (MIN/MAX/CENTER/SPACE_BETWEEN) controls main direction, counter axis (MIN/MAX/CENTER/BASELINE) controls cross direction. SPACE_BETWEEN overrides itemSpacing. Auto-selects frame. Returns: {name}. Example: set_axis_align(nodeId='123:456', primaryAxisAlignItems='CENTER', counterAxisAlignItems='CENTER'). Related: set_layout_mode, set_item_spacing",
+  "Set alignment in an auto-layout frame.",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
+    nodeId: z.string(),
     primaryAxisAlignItems: z
       .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
       .optional()
-      .describe("Primary axis alignment (MIN/MAX = left/right in horizontal, top/bottom in vertical). Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
+      .describe("Main direction alignment"),
     counterAxisAlignItems: z
       .enum(["MIN", "MAX", "CENTER", "BASELINE"])
       .optional()
-      .describe("Counter axis alignment (MIN/MAX = top/bottom in horizontal, left/right in vertical)")
+      .describe("Cross direction alignment")
   },
   async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }: any) => {
     try {
@@ -4826,14 +4077,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting axis alignment: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting axis alignment", error);
     }
   }
 );
@@ -4841,17 +4085,17 @@ server.tool(
 // Set Layout Sizing Tool
 server.tool(
   "set_layout_sizing",
-  "Set sizing behavior for auto-layout frame or child. FIXED=explicit size, HUG=wrap content (frames/text only), FILL=expand to fill parent (auto-layout children only). Auto-selects node. Returns: {name}. Example: set_layout_sizing(nodeId='123:456', layoutSizingHorizontal='HUG', layoutSizingVertical='FIXED'). Related: set_layout_mode",
+  "Set sizing behavior (FIXED/HUG/FILL).",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
+    nodeId: z.string(),
     layoutSizingHorizontal: z
       .enum(["FIXED", "HUG", "FILL"])
       .optional()
-      .describe("Horizontal sizing mode (HUG for frames/text only, FILL for auto-layout children only)"),
+      ,
     layoutSizingVertical: z
       .enum(["FIXED", "HUG", "FILL"])
       .optional()
-      .describe("Vertical sizing mode (HUG for frames/text only, FILL for auto-layout children only)")
+      
   },
   async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }: any) => {
     try {
@@ -4880,14 +4124,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting layout sizing: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting layout sizing", error);
     }
   }
 );
@@ -4895,11 +4132,11 @@ server.tool(
 // Set Item Spacing Tool
 server.tool(
   "set_item_spacing",
-  "Set spacing between children in auto-layout frame. itemSpacing=gap in main direction (ignored if SPACE_BETWEEN alignment), counterAxisSpacing=gap between wrapped rows/columns (requires WRAP mode). Auto-selects frame. Returns: {name, itemSpacing?, counterAxisSpacing?}. Example: set_item_spacing(nodeId='123:456', itemSpacing=16, counterAxisSpacing=12). Related: set_layout_mode, set_axis_align",
+  "Set spacing between children in auto-layout.",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
-    itemSpacing: z.number().optional().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
-    counterAxisSpacing: z.number().optional().describe("Distance between wrapped rows/columns. Only works when layoutWrap is set to WRAP.")
+    nodeId: z.string(),
+    itemSpacing: z.number().optional().describe("Gap between children"),
+    counterAxisSpacing: z.number().optional().describe("Gap between wrapped lines (requires WRAP)")
   },
   async ({ nodeId, itemSpacing, counterAxisSpacing}: any) => {
     try {
@@ -4923,14 +4160,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting spacing: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting spacing", error);
     }
   }
 );
@@ -4938,7 +4168,7 @@ server.tool(
 // A tool to get Figma Prototyping Reactions from multiple nodes
 server.tool(
   "get_reactions",
-  "Get prototype interactions (ON_CLICK, etc.) from nodes showing navigation flows. Output must be processed via reaction_to_connector_strategy prompt to convert to visual connectors. Returns: {nodes: Array<{id, name, reactions: Array<{trigger, action}>}>}. Example: get_reactions(nodeIds=['123:456', '789:0']). Related: create_connections, set_default_connector",
+  "Get prototype interactions from nodes.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
   },
@@ -4962,15 +4192,7 @@ server.tool(
         },
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting reactions: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting reactions", error);
     }
   }
 );
@@ -4978,7 +4200,7 @@ server.tool(
 // Create Connectors Tool
 server.tool(
   "set_default_connector",
-  "Set a FigJam connector as the default style for all future connections. Copy connector from FigJam first, then call with its nodeId (or omit to use current selection). Returns: {success, message}. Example: set_default_connector(connectorId='123:456'). Required before create_connections. Related: create_connections",
+  "Set default connector style for connections.",
   {
     connectorId: z.string().optional().describe("The ID of the connector node to set as default")
   },
@@ -4997,14 +4219,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("setting default connector", error);
     }
   }
 );
@@ -5012,7 +4227,7 @@ server.tool(
 // Connect Nodes Tool
 server.tool(
   "create_connections",
-  "Create visual connector lines between nodes using default connector style (must call set_default_connector first). Perfect for flow diagrams, user journey maps, prototype documentation. Returns: {success, connectionsCreated}. Example: create_connections(connections=[{startNodeId:'123:4', endNodeId:'123:5', text:'Next'}]). Related: get_reactions, set_default_connector",
+  "Create visual connector lines between nodes.",
   {
     connections: z.array(z.object({
       startNodeId: z.string().describe("ID of the starting node"),
@@ -5052,14 +4267,7 @@ server.tool(
         ]
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
+      return formatErrorResponse("creating connections", error);
     }
   }
 );
@@ -5067,9 +4275,9 @@ server.tool(
 // Set Focus Tool
 server.tool(
   "set_focus",
-  "Select a single node and scroll viewport to center it (useful for navigating to specific elements after operations). Returns: {name, id}. Example: set_focus(nodeId='123:456'). Related: set_selections, get_selection",
+  "Select a node and scroll viewport to center it.",
   {
-    nodeId: z.string().describe("The ID of the node to focus on"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -5084,14 +4292,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting focus: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting focus", error);
     }
   }
 );
@@ -5099,9 +4300,9 @@ server.tool(
 // Set Selections Tool
 server.tool(
   "set_selections",
-  "Select multiple nodes simultaneously and scroll viewport to show them all (useful for batch operations or visual comparison). Returns: {count, selectedNodes: Array<{name, id}>}. Example: set_selections(nodeIds=['123:456', '789:0', '111:222']). Related: set_focus, get_selection",
+  "Select multiple nodes and scroll to show them.",
   {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
+    nodeIds: z.array(z.string()),
   },
   async ({ nodeIds }: any) => {
     try {
@@ -5116,14 +4317,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting selections: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting selections", error);
     }
   }
 );
@@ -5135,7 +4329,7 @@ server.tool(
 // Get Pages Tool
 server.tool(
   "get_pages",
-  "Get all pages in the current Figma document with their names, IDs, and child counts. Returns: Array<{id: string, name: string, childCount: number}>. Example: get_pages(). Use this to discover available pages before switching, deleting, or renaming. Related: create_page, switch_page, delete_page, rename_page",
+  "Get all pages with names, IDs, and child counts.",
   {},
   async () => {
     try {
@@ -5150,14 +4344,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting pages", error);
     }
   }
 );
@@ -5165,7 +4352,7 @@ server.tool(
 // Create Page Tool
 server.tool(
   "create_page",
-  "Create a new page in the Figma document with the specified name. Automatically switches to the new page after creation. Returns: {id: string, name: string, type: 'PAGE'}. Example: create_page(name='Design System'). Use this to organize designs into separate pages. Related: get_pages, switch_page, delete_page, rename_page",
+  "Create a new page and switch to it.",
   {
     name: z.string().describe("Name for the new page (e.g., 'Design System', 'Components', 'Prototypes')"),
   },
@@ -5182,14 +4369,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating page: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("creating page", error);
     }
   }
 );
@@ -5197,7 +4377,7 @@ server.tool(
 // Switch Page Tool
 server.tool(
   "switch_page",
-  "Switch to a different page in the Figma document by its ID. Use get_pages() first to find available page IDs. Returns: {id: string, name: string, type: 'PAGE'}. Example: switch_page(pageId='123:456'). Use this to navigate between pages. Related: get_pages, create_page, delete_page, rename_page",
+  "Switch to a different page by ID.",
   {
     pageId: z.string().describe("The ID of the page to switch to (use get_pages to find page IDs)"),
   },
@@ -5214,14 +4394,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error switching page: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("switching page", error);
     }
   }
 );
@@ -5229,7 +4402,7 @@ server.tool(
 // Delete Page Tool
 server.tool(
   "delete_page",
-  "Delete a page from the Figma document. Cannot delete the last remaining page. If deleting the current page, automatically switches to another page first. Returns: {success: boolean, message: string}. Example: delete_page(pageId='123:456'). WARNING: This action cannot be undone (unless using Figma's undo). Related: get_pages, create_page, switch_page, rename_page",
+  "Delete a page (cannot delete the last page).",
   {
     pageId: z.string().describe("The ID of the page to delete (use get_pages to find page IDs)"),
   },
@@ -5246,14 +4419,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting page: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting page", error);
     }
   }
 );
@@ -5261,7 +4427,7 @@ server.tool(
 // Rename Page Tool
 server.tool(
   "rename_page",
-  "Rename an existing page in the Figma document. Returns: {id: string, name: string, type: 'PAGE'}. Example: rename_page(pageId='123:456', name='New Page Name'). Use this to organize and clarify page purposes. Related: get_pages, create_page, switch_page, delete_page",
+  "Rename a page.",
   {
     pageId: z.string().describe("The ID of the page to rename (use get_pages to find page IDs)"),
     name: z.string().describe("The new name for the page"),
@@ -5279,14 +4445,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error renaming page: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("renaming page", error);
     }
   }
 );
@@ -5298,9 +4457,9 @@ server.tool(
 // Set Plugin Data Tool
 server.tool(
   "set_plugin_data",
-  "Store custom metadata on any node using key-value pairs. Data persists with the Figma file and survives plugin updates. Returns: {success: boolean, nodeId, key}. Example: set_plugin_data(nodeId='123:456', key='status', value='approved'). Use for tracking custom state, metadata, or flags. Related: get_plugin_data, get_all_plugin_data, delete_plugin_data",
+  "Store key-value metadata on a node.",
   {
-    nodeId: z.string().describe("The ID of the node to store data on"),
+    nodeId: z.string(),
     key: z.string().describe("Key name for the data (e.g., 'status', 'customMetadata')"),
     value: z.string().describe("Value to store (must be string - stringify objects if needed)"),
   },
@@ -5316,14 +4475,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting plugin data: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("setting plugin data", error);
     }
   }
 );
@@ -5331,9 +4483,9 @@ server.tool(
 // Get Plugin Data Tool
 server.tool(
   "get_plugin_data",
-  "Retrieve custom metadata stored on a node by key. Returns: {nodeId, nodeName, key, value: string}. Example: get_plugin_data(nodeId='123:456', key='status'). Use to read previously stored custom data. Related: set_plugin_data, get_all_plugin_data, delete_plugin_data",
+  "Get stored metadata from a node by key.",
   {
-    nodeId: z.string().describe("The ID of the node to read data from"),
+    nodeId: z.string(),
     key: z.string().describe("Key name of the data to retrieve"),
   },
   async ({ nodeId, key }: any) => {
@@ -5349,14 +4501,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting plugin data: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting plugin data", error);
     }
   }
 );
@@ -5364,9 +4509,9 @@ server.tool(
 // Get All Plugin Data Tool
 server.tool(
   "get_all_plugin_data",
-  "Retrieve all custom metadata keys and values stored on a node. Returns: {nodeId, nodeName, data: {key1: value1, key2: value2, ...}}. Example: get_all_plugin_data(nodeId='123:456'). Use to discover all stored data on a node. Related: set_plugin_data, get_plugin_data, delete_plugin_data",
+  "Get all stored metadata keys and values on a node.",
   {
-    nodeId: z.string().describe("The ID of the node to read all data from"),
+    nodeId: z.string(),
   },
   async ({ nodeId }: any) => {
     try {
@@ -5377,19 +4522,12 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Found ${dataCount} plugin data key(s) on "${typedResult.nodeName}":\n${JSON.stringify(typedResult.data, null, 2)}`,
+            text: `Found ${dataCount} plugin data key(s) on "${typedResult.nodeName}":\n${JSON.stringify(typedResult.data)}`,
           },
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting all plugin data: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("getting all plugin data", error);
     }
   }
 );
@@ -5397,9 +4535,9 @@ server.tool(
 // Delete Plugin Data Tool
 server.tool(
   "delete_plugin_data",
-  "Remove custom metadata from a node by key. Returns: {success: boolean, nodeId, key}. Example: delete_plugin_data(nodeId='123:456', key='status'). Use to clean up unused metadata. Related: set_plugin_data, get_plugin_data, get_all_plugin_data",
+  "Delete stored metadata from a node by key.",
   {
-    nodeId: z.string().describe("The ID of the node to delete data from"),
+    nodeId: z.string(),
     key: z.string().describe("Key name of the data to delete"),
   },
   async ({ nodeId, key }: any) => {
@@ -5414,14 +4552,7 @@ server.tool(
         ],
       };
     } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting plugin data: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
+      return formatErrorResponse("deleting plugin data", error);
     }
   }
 );

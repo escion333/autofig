@@ -153,6 +153,9 @@ import { getAnnotations, setAnnotation, setMultipleAnnotations, scanNodesByTypes
 // Prototyping
 import { getReactions, setDefaultConnector, createConnections } from './prototyping';
 
+// Batch Styles
+import { applyStyleBatch, setPaintBatch } from './batch-styles';
+
 // Export
 import { exportNodeAsImage, exportMultipleNodes } from './export';
 
@@ -440,6 +443,12 @@ export async function handleCommand(
       return await setDefaultConnector(params as CommandParams['set_default_connector']);
     case 'create_connections':
       return await createConnections(params as CommandParams['create_connections']);
+
+    // Batch Styles
+    case 'apply_style_batch':
+      return await applyStyleBatch(params as CommandParams['apply_style_batch']);
+    case 'set_paint_batch':
+      return await setPaintBatch(params as CommandParams['set_paint_batch']);
 
     // Export
     case 'export_node_as_image':

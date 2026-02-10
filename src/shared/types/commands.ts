@@ -146,6 +146,9 @@ export type FigmaCommand =
   | 'get_reactions'
   | 'set_default_connector'
   | 'create_connections'
+  // Batch Styles
+  | 'apply_style_batch'
+  | 'set_paint_batch'
   // Export
   | 'export_node_as_image'
   | 'export_multiple_nodes'
@@ -696,6 +699,7 @@ export interface CommandParams {
     nodeId?: string;
     depth?: number;
     filter?: string;
+    maxResults?: number;
   };
   set_multiple_text_contents: {
     updates: Array<{ nodeId: string; text: string }>;
@@ -716,6 +720,7 @@ export interface CommandParams {
     types: NodeType[];
     parentNodeId?: string;
     depth?: number;
+    maxResults?: number;
   };
 
   // Prototyping
@@ -732,6 +737,23 @@ export interface CommandParams {
       fromNodeId: string;
       toNodeId: string;
       label?: string;
+    }>;
+  };
+
+  // Batch Styles
+  apply_style_batch: {
+    styleType: 'TEXT' | 'PAINT' | 'EFFECT' | 'GRID';
+    styleId?: string;
+    styleName?: string;
+    nodeIds: string[];
+    property?: 'fills' | 'strokes';
+  };
+  set_paint_batch: {
+    updates: Array<{
+      nodeId: string;
+      property?: 'fills' | 'strokes';
+      color: RGBA;
+      weight?: number;
     }>;
   };
 

@@ -743,6 +743,9 @@ export async function setMultipleVariableValues(
   let successCount = 0;
   let failureCount = 0;
 
+  // Cache variables to avoid repeated lookups
+  const variableCache = new Map<string, Variable>();
+
   // Process in chunks of 5
   const CHUNK_SIZE = 5;
   const chunks: Array<typeof updates> = [];
@@ -766,9 +769,14 @@ export async function setMultipleVariableValues(
 
     const chunkPromises = chunk.map(async ({ variableId, modeId, value }) => {
       try {
-        const variable = await figma.variables.getVariableByIdAsync(variableId);
+        let variable = variableCache.get(variableId);
         if (!variable) {
-          return { success: false, variableId, modeId, error: `Variable not found: ${variableId}` };
+          const v = await figma.variables.getVariableByIdAsync(variableId);
+          if (!v) {
+            return { success: false, variableId, modeId, error: `Variable not found: ${variableId}` };
+          }
+          variable = v;
+          variableCache.set(variableId, v);
         }
 
         const figmaValue = convertToFigmaValue(value, variable.resolvedType);

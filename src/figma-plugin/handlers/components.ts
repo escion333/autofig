@@ -754,8 +754,8 @@ export async function createMultipleComponentInstances(
       { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
     );
 
-    // Process each item in chunk sequentially to avoid race conditions with insertIndex
-    for (const entry of chunk) {
+    // Helper to process a single instance entry
+    const processEntry = async (entry: typeof chunk[number]): Promise<{ success: boolean; instanceId?: string; parentId: string; error?: string }> => {
       try {
         let component: ComponentNode | undefined;
 
@@ -764,14 +764,10 @@ export async function createMultipleComponentInstances(
           if (!component) {
             const node = await figma.getNodeByIdAsync(entry.componentId);
             if (!node) {
-              results.push({ success: false, parentId: entry.parentId, error: `Component not found: ${entry.componentId}` });
-              failureCount++;
-              continue;
+              return { success: false, parentId: entry.parentId, error: `Component not found: ${entry.componentId}` };
             }
             if (node.type !== 'COMPONENT') {
-              results.push({ success: false, parentId: entry.parentId, error: `Node ${entry.componentId} is not a component (type: ${node.type})` });
-              failureCount++;
-              continue;
+              return { success: false, parentId: entry.parentId, error: `Node ${entry.componentId} is not a component (type: ${node.type})` };
             }
             component = node as ComponentNode;
             componentCache.set(entry.componentId, component);
@@ -783,9 +779,7 @@ export async function createMultipleComponentInstances(
             componentCache.set(entry.componentKey, component);
           }
         } else {
-          results.push({ success: false, parentId: entry.parentId, error: 'Either componentId or componentKey must be provided' });
-          failureCount++;
-          continue;
+          return { success: false, parentId: entry.parentId, error: 'Either componentId or componentKey must be provided' };
         }
 
         const instance = component.createInstance();
@@ -794,9 +788,7 @@ export async function createMultipleComponentInstances(
         const parentNode = await figma.getNodeByIdAsync(entry.parentId);
         if (!parentNode || !('appendChild' in parentNode)) {
           instance.remove();
-          results.push({ success: false, parentId: entry.parentId, error: `Parent not found or cannot have children: ${entry.parentId}` });
-          failureCount++;
-          continue;
+          return { success: false, parentId: entry.parentId, error: `Parent not found or cannot have children: ${entry.parentId}` };
         }
 
         const parent = parentNode as BaseNode & ChildrenMixin;
@@ -814,10 +806,30 @@ export async function createMultipleComponentInstances(
           instance.visible = entry.visible;
         }
 
-        results.push({ success: true, instanceId: instance.id, parentId: entry.parentId });
-        successCount++;
+        return { success: true, instanceId: instance.id, parentId: entry.parentId };
       } catch (error) {
-        results.push({ success: false, parentId: entry.parentId, error: (error as Error).message });
+        return { success: false, parentId: entry.parentId, error: (error as Error).message };
+      }
+    };
+
+    // If no entry in this chunk uses insertIndex, process in parallel; otherwise sequential
+    const needsSequential = chunk.some(entry => entry.insertIndex !== undefined);
+    let chunkResults: Array<{ success: boolean; instanceId?: string; parentId: string; error?: string }>;
+
+    if (needsSequential) {
+      chunkResults = [];
+      for (const entry of chunk) {
+        chunkResults.push(await processEntry(entry));
+      }
+    } else {
+      chunkResults = await Promise.all(chunk.map(processEntry));
+    }
+
+    for (const result of chunkResults) {
+      results.push(result);
+      if (result.success) {
+        successCount++;
+      } else {
         failureCount++;
       }
     }

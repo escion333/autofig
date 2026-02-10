@@ -800,7 +800,7 @@ The node may have been deleted or the ID is invalid.
   }
   __name(findTextNodes, "findTextNodes");
   async function scanTextNodes(params) {
-    const { nodeId, depth: maxDepth, filter } = params || {};
+    const { nodeId, depth: maxDepth, filter, maxResults } = params || {};
     const commandId = generateCommandId();
     let rootNode;
     if (nodeId) {
@@ -834,6 +834,9 @@ The node may have been deleted or the ID is invalid.
     }
     if (maxDepth !== void 0) {
       filteredNodes = filteredNodes.filter((n) => n.depth <= maxDepth);
+    }
+    if (maxResults !== void 0 && maxResults > 0 && filteredNodes.length > maxResults) {
+      filteredNodes = filteredNodes.slice(0, maxResults);
     }
     sendProgressUpdate(
       commandId,
@@ -873,6 +876,28 @@ The node may have been deleted or the ID is invalid.
     const results = [];
     let successCount = 0;
     let failureCount = 0;
+    const fontMap = /* @__PURE__ */ new Map();
+    for (const { nodeId } of updates) {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (node && node.type === "TEXT") {
+          const textNode = node;
+          if (textNode.fontName !== figma.mixed) {
+            const font = textNode.fontName;
+            const key = `${font.family}::${font.style}`;
+            if (!fontMap.has(key)) {
+              fontMap.set(key, font);
+            }
+          }
+        }
+      } catch (_) {
+      }
+    }
+    if (fontMap.size > 0) {
+      await Promise.all(
+        Array.from(fontMap.values()).map((f) => figma.loadFontAsync(f))
+      );
+    }
     const CHUNK_SIZE = 5;
     const chunks = [];
     for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
@@ -900,9 +925,6 @@ The node may have been deleted or the ID is invalid.
             return { success: false, nodeId, error: `Node is not a text node: ${nodeId}` };
           }
           const textNode = node;
-          if (textNode.fontName !== figma.mixed) {
-            await figma.loadFontAsync(textNode.fontName);
-          }
           await setCharacters(textNode, text);
           return { success: true, nodeId, nodeName: node.name };
         } catch (error) {
@@ -2299,6 +2321,7 @@ The node may have been deleted or the ID is invalid.
     const results = [];
     let successCount = 0;
     let failureCount = 0;
+    const variableCache = /* @__PURE__ */ new Map();
     const CHUNK_SIZE = 5;
     const chunks = [];
     for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
@@ -2318,9 +2341,14 @@ The node may have been deleted or the ID is invalid.
       );
       const chunkPromises = chunk.map(async ({ variableId, modeId, value }) => {
         try {
-          const variable = await figma.variables.getVariableByIdAsync(variableId);
+          let variable = variableCache.get(variableId);
           if (!variable) {
-            return { success: false, variableId, modeId, error: `Variable not found: ${variableId}` };
+            const v = await figma.variables.getVariableByIdAsync(variableId);
+            if (!v) {
+              return { success: false, variableId, modeId, error: `Variable not found: ${variableId}` };
+            }
+            variable = v;
+            variableCache.set(variableId, v);
           }
           const figmaValue = convertToFigmaValue(value, variable.resolvedType);
           variable.setValueForMode(modeId, figmaValue);
@@ -2473,7 +2501,7 @@ The node may have been deleted or the ID is invalid.
   }
   __name(loadFont, "loadFont");
   async function getTextStyles() {
-    const styles = figma.getLocalTextStyles();
+    const styles = await figma.getLocalTextStylesAsync();
     return {
       styles: styles.map((style) => ({
         id: style.id,
@@ -2552,19 +2580,19 @@ The node may have been deleted or the ID is invalid.
     const textNode = node;
     let style;
     if (styleId) {
-      style = figma.getStyleById(styleId);
+      style = await figma.getStyleByIdAsync(styleId);
       if (!style || style.type !== "TEXT") {
         throw new Error(`Text style not found with ID: ${styleId}`);
       }
     } else if (styleName) {
-      const styles = figma.getLocalTextStyles();
+      const styles = await figma.getLocalTextStylesAsync();
       style = styles.find((s) => s.name === styleName);
       if (!style) {
         throw new Error(`Text style not found with name: "${styleName}"`);
       }
     }
     await figma.loadFontAsync(style.fontName);
-    textNode.textStyleId = style.id;
+    await textNode.setTextStyleIdAsync(style.id);
     return {
       id: textNode.id,
       name: textNode.name,
@@ -3021,7 +3049,7 @@ The node may have been deleted or the ID is invalid.
     }
     let style = null;
     if (styleId) {
-      const foundStyle = figma.getStyleById(styleId);
+      const foundStyle = await figma.getStyleByIdAsync(styleId);
       if (foundStyle && foundStyle.type === "EFFECT") {
         style = foundStyle;
       }
@@ -3034,7 +3062,7 @@ The node may have been deleted or the ID is invalid.
     }
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "effectStyleId", `Node "${node.name}" does not support effect styles`);
-    node.effectStyleId = style.id;
+    await node.setEffectStyleIdAsync(style.id);
     provideVisualFeedback(node, `\u2705 Applied effect style "${style.name}" to ${node.name}`);
     return {
       success: true,
@@ -3995,8 +4023,11 @@ The node may have been deleted or the ID is invalid.
       throw new Error("Missing nodeId parameter");
     }
     const node = await getNodeById(nodeId);
-    assertAutoLayoutSupport(node);
-    assertAutoLayoutEnabled(node);
+    const isAutoLayoutChild = node.parent && "layoutMode" in node.parent && node.parent.layoutMode !== "NONE";
+    if (!isAutoLayoutChild) {
+      assertAutoLayoutSupport(node);
+      assertAutoLayoutEnabled(node);
+    }
     const validSizing = ["FIXED", "HUG", "FILL"];
     if (horizontal !== void 0) {
       if (!validSizing.includes(horizontal)) {
@@ -4572,7 +4603,7 @@ The node may have been deleted or the ID is invalid.
         `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
         { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
       );
-      for (const entry of chunk) {
+      const processEntry = /* @__PURE__ */ __name(async (entry) => {
         try {
           let component;
           if (entry.componentId) {
@@ -4580,14 +4611,10 @@ The node may have been deleted or the ID is invalid.
             if (!component) {
               const node = await figma.getNodeByIdAsync(entry.componentId);
               if (!node) {
-                results.push({ success: false, parentId: entry.parentId, error: `Component not found: ${entry.componentId}` });
-                failureCount++;
-                continue;
+                return { success: false, parentId: entry.parentId, error: `Component not found: ${entry.componentId}` };
               }
               if (node.type !== "COMPONENT") {
-                results.push({ success: false, parentId: entry.parentId, error: `Node ${entry.componentId} is not a component (type: ${node.type})` });
-                failureCount++;
-                continue;
+                return { success: false, parentId: entry.parentId, error: `Node ${entry.componentId} is not a component (type: ${node.type})` };
               }
               component = node;
               componentCache.set(entry.componentId, component);
@@ -4599,17 +4626,13 @@ The node may have been deleted or the ID is invalid.
               componentCache.set(entry.componentKey, component);
             }
           } else {
-            results.push({ success: false, parentId: entry.parentId, error: "Either componentId or componentKey must be provided" });
-            failureCount++;
-            continue;
+            return { success: false, parentId: entry.parentId, error: "Either componentId or componentKey must be provided" };
           }
           const instance = component.createInstance();
           const parentNode = await figma.getNodeByIdAsync(entry.parentId);
           if (!parentNode || !("appendChild" in parentNode)) {
             instance.remove();
-            results.push({ success: false, parentId: entry.parentId, error: `Parent not found or cannot have children: ${entry.parentId}` });
-            failureCount++;
-            continue;
+            return { success: false, parentId: entry.parentId, error: `Parent not found or cannot have children: ${entry.parentId}` };
           }
           const parent = parentNode;
           if (entry.insertIndex !== void 0) {
@@ -4623,10 +4646,26 @@ The node may have been deleted or the ID is invalid.
           if (entry.visible !== void 0) {
             instance.visible = entry.visible;
           }
-          results.push({ success: true, instanceId: instance.id, parentId: entry.parentId });
-          successCount++;
+          return { success: true, instanceId: instance.id, parentId: entry.parentId };
         } catch (error) {
-          results.push({ success: false, parentId: entry.parentId, error: error.message });
+          return { success: false, parentId: entry.parentId, error: error.message };
+        }
+      }, "processEntry");
+      const needsSequential = chunk.some((entry) => entry.insertIndex !== void 0);
+      let chunkResults;
+      if (needsSequential) {
+        chunkResults = [];
+        for (const entry of chunk) {
+          chunkResults.push(await processEntry(entry));
+        }
+      } else {
+        chunkResults = await Promise.all(chunk.map(processEntry));
+      }
+      for (const result of chunkResults) {
+        results.push(result);
+        if (result.success) {
+          successCount++;
+        } else {
           failureCount++;
         }
       }
@@ -4895,7 +4934,7 @@ The node may have been deleted or the ID is invalid.
   }
   __name(setMultipleAnnotations, "setMultipleAnnotations");
   async function scanNodesByTypes(params) {
-    const { types, parentNodeId, depth: maxDepth } = params || {};
+    const { types, parentNodeId, depth: maxDepth, maxResults } = params || {};
     const commandId = generateCommandId();
     if (!types || !Array.isArray(types) || types.length === 0) {
       throw new Error("Missing or invalid types parameter");
@@ -4915,6 +4954,9 @@ The node may have been deleted or the ID is invalid.
       if (maxDepth !== void 0 && currentDepth > maxDepth) {
         return;
       }
+      if (maxResults !== void 0 && maxResults > 0 && matchingNodes.length >= maxResults) {
+        return;
+      }
       if (types.includes(node.type)) {
         matchingNodes.push({
           id: node.id,
@@ -4926,6 +4968,9 @@ The node may have been deleted or the ID is invalid.
       }
       if ("children" in node) {
         for (const child of node.children) {
+          if (maxResults !== void 0 && maxResults > 0 && matchingNodes.length >= maxResults) {
+            return;
+          }
           await findNodes(child, [...path, node.name], currentDepth + 1);
         }
       }
@@ -5167,6 +5212,267 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(createConnections, "createConnections");
+
+  // src/figma-plugin/handlers/batch-styles.ts
+  async function applyStyleBatch(params) {
+    const { styleType, styleId, styleName, nodeIds, property } = params || {};
+    const commandId = generateCommandId();
+    if (!styleType) {
+      throw new Error("Missing styleType parameter");
+    }
+    if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+      throw new Error("Missing or invalid nodeIds parameter");
+    }
+    if (!styleId && !styleName) {
+      throw new Error("Either styleId or styleName must be provided");
+    }
+    sendProgressUpdate(
+      commandId,
+      "apply_style_batch",
+      "started",
+      0,
+      nodeIds.length,
+      0,
+      `Starting to apply ${styleType} style to ${nodeIds.length} nodes`,
+      { styleType, totalNodes: nodeIds.length }
+    );
+    let resolvedStyleId = styleId;
+    if (!resolvedStyleId && styleName) {
+      resolvedStyleId = await resolveStyleByName(styleType, styleName);
+      if (!resolvedStyleId) {
+        throw new Error(`${styleType} style not found: "${styleName}"`);
+      }
+    }
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+      chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "apply_style_batch",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        nodeIds.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async (nodeId) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          await applyStyleToNode(node, styleType, resolvedStyleId, property);
+          return { success: true, nodeId };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      for (const result of chunkResults) {
+        results.push(result);
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      }
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "apply_style_batch",
+      "completed",
+      100,
+      nodeIds.length,
+      successCount + failureCount,
+      `Style batch complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Applied ${styleType} style to ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalNodes: nodeIds.length,
+      results,
+      commandId
+    };
+  }
+  __name(applyStyleBatch, "applyStyleBatch");
+  async function setPaintBatch(params) {
+    const { updates } = params || {};
+    const commandId = generateCommandId();
+    if (!updates || !Array.isArray(updates) || updates.length === 0) {
+      throw new Error("Missing or invalid updates parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_paint_batch",
+      "started",
+      0,
+      updates.length,
+      0,
+      `Starting to set paint on ${updates.length} nodes`,
+      { totalNodes: updates.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+      chunks.push(updates.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "set_paint_batch",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        updates.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, property, color, weight }) => {
+        var _a, _b, _c, _d;
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          const sceneNode = node;
+          const paintStyle = {
+            type: "SOLID",
+            color: { r: (_a = color.r) != null ? _a : 0, g: (_b = color.g) != null ? _b : 0, b: (_c = color.b) != null ? _c : 0 },
+            opacity: (_d = color.a) != null ? _d : 1
+          };
+          const prop = property || "fills";
+          if (prop === "fills") {
+            if (!("fills" in sceneNode)) {
+              return { success: false, nodeId, error: `Node does not support fills: ${nodeId}` };
+            }
+            sceneNode.fills = [paintStyle];
+          } else {
+            if (!("strokes" in sceneNode)) {
+              return { success: false, nodeId, error: `Node does not support strokes: ${nodeId}` };
+            }
+            sceneNode.strokes = [paintStyle];
+            if (weight !== void 0 && "strokeWeight" in sceneNode) {
+              sceneNode.strokeWeight = weight;
+            }
+          }
+          return { success: true, nodeId };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      for (const result of chunkResults) {
+        results.push(result);
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      }
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_paint_batch",
+      "completed",
+      100,
+      updates.length,
+      successCount + failureCount,
+      `Paint batch complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Set paint on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalNodes: updates.length,
+      results,
+      commandId
+    };
+  }
+  __name(setPaintBatch, "setPaintBatch");
+  async function resolveStyleByName(styleType, styleName) {
+    let styles;
+    switch (styleType) {
+      case "TEXT":
+        styles = await figma.getLocalTextStylesAsync();
+        break;
+      case "PAINT":
+        styles = await figma.getLocalPaintStylesAsync();
+        break;
+      case "EFFECT":
+        styles = await figma.getLocalEffectStylesAsync();
+        break;
+      case "GRID":
+        styles = await figma.getLocalGridStylesAsync();
+        break;
+      default:
+        return null;
+    }
+    const match = styles.find((s) => s.name === styleName);
+    return match ? match.id : null;
+  }
+  __name(resolveStyleByName, "resolveStyleByName");
+  async function applyStyleToNode(node, styleType, styleId, property) {
+    switch (styleType) {
+      case "TEXT": {
+        if (node.type !== "TEXT") {
+          throw new Error(`Node ${node.id} is not a text node`);
+        }
+        await node.setTextStyleIdAsync(styleId);
+        break;
+      }
+      case "PAINT": {
+        const prop = property || "fills";
+        if (prop === "fills") {
+          if (!("fills" in node)) throw new Error(`Node ${node.id} does not support fills`);
+          await node.setFillStyleIdAsync(styleId);
+        } else {
+          if (!("strokes" in node)) throw new Error(`Node ${node.id} does not support strokes`);
+          await node.setStrokeStyleIdAsync(styleId);
+        }
+        break;
+      }
+      case "EFFECT": {
+        if (!("effects" in node)) throw new Error(`Node ${node.id} does not support effects`);
+        await node.setEffectStyleIdAsync(styleId);
+        break;
+      }
+      case "GRID": {
+        if (node.type !== "FRAME" && node.type !== "COMPONENT" && node.type !== "COMPONENT_SET" && node.type !== "SECTION") {
+          throw new Error(`Node ${node.id} (${node.type}) does not support grid styles`);
+        }
+        await node.setGridStyleIdAsync(styleId);
+        break;
+      }
+      default:
+        throw new Error(`Unknown style type: ${styleType}`);
+    }
+  }
+  __name(applyStyleToNode, "applyStyleToNode");
 
   // src/figma-plugin/handlers/export.ts
   async function exportNodeAsImage(params) {
@@ -5595,6 +5901,11 @@ The node may have been deleted or the ID is invalid.
         return await setDefaultConnector(params);
       case "create_connections":
         return await createConnections(params);
+      // Batch Styles
+      case "apply_style_batch":
+        return await applyStyleBatch(params);
+      case "set_paint_batch":
+        return await setPaintBatch(params);
       // Export
       case "export_node_as_image":
         return await exportNodeAsImage(params);

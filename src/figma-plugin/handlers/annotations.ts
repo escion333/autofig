@@ -200,7 +200,7 @@ export async function setMultipleAnnotations(params: CommandParams['set_multiple
  * Scan for nodes by type
  */
 export async function scanNodesByTypes(params: CommandParams['scan_nodes_by_types']) {
-  const { types, parentNodeId, depth: maxDepth } = params || {};
+  const { types, parentNodeId, depth: maxDepth, maxResults } = params || {};
   const commandId = generateCommandId();
 
   if (!types || !Array.isArray(types) || types.length === 0) {
@@ -231,6 +231,11 @@ export async function scanNodesByTypes(params: CommandParams['scan_nodes_by_type
       return;
     }
 
+    // Check maxResults limit
+    if (maxResults !== undefined && maxResults > 0 && matchingNodes.length >= maxResults) {
+      return;
+    }
+
     // Check if node matches any of the specified types
     if (types.includes(node.type as NodeType)) {
       matchingNodes.push({
@@ -245,6 +250,9 @@ export async function scanNodesByTypes(params: CommandParams['scan_nodes_by_type
     // Recurse into children
     if ('children' in node) {
       for (const child of node.children) {
+        if (maxResults !== undefined && maxResults > 0 && matchingNodes.length >= maxResults) {
+          return;
+        }
         await findNodes(child, [...path, node.name], currentDepth + 1);
       }
     }
