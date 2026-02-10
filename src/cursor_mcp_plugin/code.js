@@ -4535,6 +4535,213 @@ The node may have been deleted or the ID is invalid.
     return { success: false, message: "No source instance ID provided. Please specify a sourceInstanceId to copy overrides from." };
   }
   __name(setInstanceOverrides, "setInstanceOverrides");
+  async function createMultipleComponentInstances(params) {
+    const { instances } = params;
+    const commandId = generateCommandId();
+    if (!instances || !Array.isArray(instances) || instances.length === 0) {
+      throw new Error("Missing or invalid instances parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "create_multiple_component_instances",
+      "started",
+      0,
+      instances.length,
+      0,
+      `Starting to create ${instances.length} component instances`,
+      { totalInstances: instances.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const componentCache = /* @__PURE__ */ new Map();
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < instances.length; i += CHUNK_SIZE) {
+      chunks.push(instances.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "create_multiple_component_instances",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        instances.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      for (const entry of chunk) {
+        try {
+          let component;
+          if (entry.componentId) {
+            component = componentCache.get(entry.componentId);
+            if (!component) {
+              const node = await figma.getNodeByIdAsync(entry.componentId);
+              if (!node) {
+                results.push({ success: false, parentId: entry.parentId, error: `Component not found: ${entry.componentId}` });
+                failureCount++;
+                continue;
+              }
+              if (node.type !== "COMPONENT") {
+                results.push({ success: false, parentId: entry.parentId, error: `Node ${entry.componentId} is not a component (type: ${node.type})` });
+                failureCount++;
+                continue;
+              }
+              component = node;
+              componentCache.set(entry.componentId, component);
+            }
+          } else if (entry.componentKey) {
+            component = componentCache.get(entry.componentKey);
+            if (!component) {
+              component = await figma.importComponentByKeyAsync(entry.componentKey);
+              componentCache.set(entry.componentKey, component);
+            }
+          } else {
+            results.push({ success: false, parentId: entry.parentId, error: "Either componentId or componentKey must be provided" });
+            failureCount++;
+            continue;
+          }
+          const instance = component.createInstance();
+          const parentNode = await figma.getNodeByIdAsync(entry.parentId);
+          if (!parentNode || !("appendChild" in parentNode)) {
+            instance.remove();
+            results.push({ success: false, parentId: entry.parentId, error: `Parent not found or cannot have children: ${entry.parentId}` });
+            failureCount++;
+            continue;
+          }
+          const parent = parentNode;
+          if (entry.insertIndex !== void 0) {
+            parent.insertChild(entry.insertIndex, instance);
+          } else {
+            parent.appendChild(instance);
+          }
+          if (entry.name) {
+            instance.name = entry.name;
+          }
+          if (entry.visible !== void 0) {
+            instance.visible = entry.visible;
+          }
+          results.push({ success: true, instanceId: instance.id, parentId: entry.parentId });
+          successCount++;
+        } catch (error) {
+          results.push({ success: false, parentId: entry.parentId, error: error.message });
+          failureCount++;
+        }
+      }
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "create_multiple_component_instances",
+      "completed",
+      100,
+      instances.length,
+      successCount + failureCount,
+      `Instance creation complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Created ${successCount} instances` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalInstances: instances.length,
+      results,
+      commandId
+    };
+  }
+  __name(createMultipleComponentInstances, "createMultipleComponentInstances");
+  async function setMultipleComponentPropertyReferences(params) {
+    const { bindings } = params;
+    const commandId = generateCommandId();
+    if (!bindings || !Array.isArray(bindings) || bindings.length === 0) {
+      throw new Error("Missing or invalid bindings parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_component_property_references",
+      "started",
+      0,
+      bindings.length,
+      0,
+      `Starting to set references on ${bindings.length} nodes`,
+      { totalBindings: bindings.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < bindings.length; i += CHUNK_SIZE) {
+      chunks.push(bindings.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "set_multiple_component_property_references",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        bindings.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, references }) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          if (!("componentPropertyReferences" in node)) {
+            return { success: false, nodeId, error: `Node ${nodeId} (type: ${node.type}) does not support componentPropertyReferences` };
+          }
+          node.componentPropertyReferences = references;
+          return { success: true, nodeId };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_component_property_references",
+      "completed",
+      100,
+      bindings.length,
+      successCount + failureCount,
+      `Property reference binding complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Set references on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalBindings: bindings.length,
+      results,
+      commandId
+    };
+  }
+  __name(setMultipleComponentPropertyReferences, "setMultipleComponentPropertyReferences");
 
   // src/figma-plugin/handlers/annotations.ts
   async function getAnnotations(params) {
@@ -5359,6 +5566,10 @@ The node may have been deleted or the ID is invalid.
         return await setComponentPropertyReferences(params);
       case "get_instance_overrides":
         return await getInstanceOverrides(params);
+      case "create_multiple_component_instances":
+        return await createMultipleComponentInstances(params);
+      case "set_multiple_component_property_references":
+        return await setMultipleComponentPropertyReferences(params);
       case "set_instance_overrides":
         return await setInstanceOverrides(params);
       // Text
@@ -5402,6 +5613,7 @@ The node may have been deleted or the ID is invalid.
   };
   figma.showUI(__html__, { width: 350, height: 450 });
   figma.ui.onmessage = async (msg) => {
+    var _a, _b;
     switch (msg.type) {
       case "update-settings":
         updateSettings(msg);
@@ -5416,6 +5628,9 @@ The node may have been deleted or the ID is invalid.
         if (msg.message) {
           figma.notify(msg.message);
         }
+        break;
+      case "resize":
+        figma.ui.resize((_a = msg.width) != null ? _a : 350, (_b = msg.height) != null ? _b : 450);
         break;
       case "close-plugin":
         figma.closePlugin();

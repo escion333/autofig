@@ -39,6 +39,8 @@ figma.ui.onmessage = async (msg: {
   id?: string;
   message?: string;
   text?: string;
+  width?: number;
+  height?: number;
   serverPort?: number;
   channelName?: string;
 }) => {
@@ -58,6 +60,10 @@ figma.ui.onmessage = async (msg: {
       if (msg.message) {
         figma.notify(msg.message);
       }
+      break;
+
+    case 'resize':
+      figma.ui.resize(msg.width ?? 350, msg.height ?? 450);
       break;
 
     case 'close-plugin':
