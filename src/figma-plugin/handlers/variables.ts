@@ -359,7 +359,8 @@ async function bindVariableToNode(
     const paintNode = node as SceneNode & { fills: Paint[]; strokes: Paint[] };
     const paints = [...(paintNode[field] as Paint[])];
     if (paints.length === 0) {
-      throw new Error(`Node has no ${field} to bind variable to`);
+      // Auto-create a default solid fill so we can bind the variable
+      paints.push({ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true } as SolidPaint);
     }
     // Bind to the first paint
     const updatedPaint = figma.variables.setBoundVariableForPaint(paints[0], 'color', variable);

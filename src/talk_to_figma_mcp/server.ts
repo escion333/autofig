@@ -105,6 +105,10 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   // Node rename operations
   'rename_multiple_nodes': 300000,     // 5 minutes - batch node renaming
 
+  // Batch component operations
+  'create_multiple_component_instances': 300000,       // 5 minutes - batch instance creation
+  'set_multiple_component_property_references': 300000, // 5 minutes - batch property reference wiring
+
   // Default timeout for all other commands
   'default': 30000                     // 30 seconds
 };
@@ -2273,6 +2277,90 @@ server.tool(
             type: "text",
             text: `Error creating component instance: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Multiple Component Instances Tool (batch)
+server.tool(
+  "create_multiple_component_instances",
+  "Create multiple component instances in bulk with auto-layout insertIndex support. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalInstances, results: [{instanceId, parentId, error?}]}. Example: create_multiple_component_instances(instances=[{componentId:'36:31762', parentId:'36:26473', name:'leadingIcon', insertIndex:0, visible:false}]). Related: create_component_instance, set_multiple_component_property_references",
+  {
+    instances: z.array(z.object({
+      componentId: z.string().optional().describe("Node ID of a local component to instantiate"),
+      componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
+      parentId: z.string().describe("Parent node ID to insert the instance into"),
+      name: z.string().optional().describe("Name to assign to the instance"),
+      insertIndex: z.number().optional().describe("Child index to insert at (0 = first child). If omitted, appends as last child."),
+      visible: z.boolean().optional().describe("Whether the instance should be visible (default: true)"),
+    })).describe("Array of instances to create"),
+  },
+  async ({ instances }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_multiple_component_instances", { instances });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalInstances: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch instance creation complete: ${typedResult.successCount}/${typedResult.totalInstances} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating component instances: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Multiple Component Property References Tool (batch)
+server.tool(
+  "set_multiple_component_property_references",
+  "Bind multiple nested instance nodes to INSTANCE_SWAP and BOOLEAN properties in bulk via componentPropertyReferences. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalBindings, results: [{nodeId, error?}]}. Example: set_multiple_component_property_references(bindings=[{nodeId:'36:100', references:{mainComponent:'leadingIcon#36:0', visible:'showLeadingIcon#36:0'}}]). Related: set_component_property_references, add_component_property",
+  {
+    bindings: z.array(z.object({
+      nodeId: z.string().describe("ID of the instance node inside the component to bind"),
+      references: z.record(z.string(), z.string()).describe("Property references map, e.g. { mainComponent: 'leadingIcon#hash', visible: 'showLeadingIcon#hash' }"),
+    })).describe("Array of bindings to apply"),
+  },
+  async ({ bindings }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_multiple_component_property_references", { bindings });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalBindings: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch reference binding complete: ${typedResult.successCount}/${typedResult.totalBindings} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting component property references: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

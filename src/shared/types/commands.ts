@@ -131,6 +131,8 @@ export type FigmaCommand =
   | 'get_instance_overrides'
   | 'set_instance_overrides'
   | 'set_component_property_references'
+  | 'create_multiple_component_instances'
+  | 'set_multiple_component_property_references'
   // Text
   | 'set_text_content'
   | 'scan_text_nodes'
@@ -659,6 +661,22 @@ export interface CommandParams {
   set_component_property_references: {
     nodeId: string;
     references: Record<string, string>;
+  };
+  create_multiple_component_instances: {
+    instances: Array<{
+      componentId?: string;
+      componentKey?: string;
+      parentId: string;
+      name?: string;
+      insertIndex?: number;
+      visible?: boolean;
+    }>;
+  };
+  set_multiple_component_property_references: {
+    bindings: Array<{
+      nodeId: string;
+      references: Record<string, string>;
+    }>;
   };
   get_instance_overrides: {
     instanceNodeId?: string;

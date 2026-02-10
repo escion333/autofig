@@ -138,6 +138,8 @@ import {
   editComponentProperty,
   setComponentPropertyValue,
   setComponentPropertyReferences,
+  createMultipleComponentInstances,
+  setMultipleComponentPropertyReferences,
   getInstanceOverrides,
   setInstanceOverrides,
 } from './components';
@@ -406,6 +408,10 @@ export async function handleCommand(
       return await setComponentPropertyReferences(params as CommandParams['set_component_property_references']);
     case 'get_instance_overrides':
       return await getInstanceOverrides(params as CommandParams['get_instance_overrides']);
+    case 'create_multiple_component_instances':
+      return await createMultipleComponentInstances(params as CommandParams['create_multiple_component_instances']);
+    case 'set_multiple_component_property_references':
+      return await setMultipleComponentPropertyReferences(params as CommandParams['set_multiple_component_property_references']);
     case 'set_instance_overrides':
       return await setInstanceOverrides(params as CommandParams['set_instance_overrides']);
 
