@@ -5467,8 +5467,15 @@ The node may have been deleted or the ID is invalid.
           state.serverPort = savedSettings.serverPort;
         }
       }
-      if (savedChannel) {
+      const DEFAULT_CHANNEL_NAME = "autofig";
+      if (savedChannel && savedChannel !== DEFAULT_CHANNEL_NAME && savedChannel.length === 8 && /^[a-z0-9]+$/.test(savedChannel)) {
+        state.channelName = DEFAULT_CHANNEL_NAME;
+        await figma.clientStorage.setAsync("channelName", DEFAULT_CHANNEL_NAME);
+      } else if (savedChannel) {
         state.channelName = savedChannel;
+      } else {
+        state.channelName = DEFAULT_CHANNEL_NAME;
+        await figma.clientStorage.setAsync("channelName", DEFAULT_CHANNEL_NAME);
       }
       figma.ui.postMessage({
         type: "init-settings",

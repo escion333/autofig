@@ -843,16 +843,9 @@
         );
       }
 
-      // Add this function after the generateId() function
+      const DEFAULT_CHANNEL_NAME = "autofig";
       function generateChannelName() {
-        const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
-        let result = "";
-        for (let i = 0; i < 8; i++) {
-          result += characters.charAt(
-            Math.floor(Math.random() * characters.length)
-          );
-        }
-        return result;
+        return DEFAULT_CHANNEL_NAME;
       }
 
       // Tab switching
@@ -1114,8 +1107,15 @@
                 state.serverPort = message.settings.serverPort;
               }
               if (message.settings.channelName) {
-                state.savedChannel = message.settings.channelName;
-                console.log("Restored saved channel:", state.savedChannel);
+                const saved = message.settings.channelName;
+                if (saved !== DEFAULT_CHANNEL_NAME && saved.length === 8 && /^[a-z0-9]+$/.test(saved)) {
+                  state.savedChannel = DEFAULT_CHANNEL_NAME;
+                  parent.postMessage({ pluginMessage: { type: "save-channel", channelName: DEFAULT_CHANNEL_NAME } }, "*");
+                  console.log("Migrated old random channel to:", DEFAULT_CHANNEL_NAME);
+                } else {
+                  state.savedChannel = saved;
+                  console.log("Restored saved channel:", state.savedChannel);
+                }
               }
             }
             break;

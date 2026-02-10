@@ -129,7 +129,7 @@ const pendingRequests = new Map<string, {
 let currentChannel: string | null = null;
 
 // Check for channel from environment variable
-const DEFAULT_CHANNEL = process.env.AUTOFIG_CHANNEL || null;
+const DEFAULT_CHANNEL = process.env.AUTOFIG_CHANNEL || "autofig";
 
 // Reconnection state
 let reconnectAttempts = 0;
@@ -383,9 +383,9 @@ async function joinChannelInternal(channelName: string): Promise<void> {
 // Join Channel Tool - MUST be first to enable all other tools
 server.tool(
   "join_channel",
-  "Join a specific channel to communicate with Figma. Required before using other AutoFig tools unless auto-join succeeds. Get the channel code from the Figma plugin UI.",
+  "Join a specific channel. Usually not needed — auto-joins 'autofig' by default. Use only to switch channels.",
   {
-    channel: z.string().describe("The channel code shown in the Figma plugin (e.g., 'abc123')").default(""),
+    channel: z.string().describe("The channel name to join (default: 'autofig')").default("autofig"),
   },
   async ({ channel }: any) => {
     try {
