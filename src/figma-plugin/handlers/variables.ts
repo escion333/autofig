@@ -344,6 +344,39 @@ export async function getBoundVariables(
 }
 
 /**
+ * Bind a variable to a node, handling paint-level binding for fills/strokes
+ */
+async function bindVariableToNode(
+  node: SceneNode,
+  field: string,
+  variable: Variable
+): Promise<void> {
+  // For fills/strokes, use paint-level binding API
+  if (field === 'fills' || field === 'strokes') {
+    if (!(field in node)) {
+      throw new Error(`Node type ${node.type} does not support ${field}`);
+    }
+    const paintNode = node as SceneNode & { fills: Paint[]; strokes: Paint[] };
+    const paints = [...(paintNode[field] as Paint[])];
+    if (paints.length === 0) {
+      throw new Error(`Node has no ${field} to bind variable to`);
+    }
+    // Bind to the first paint
+    const updatedPaint = figma.variables.setBoundVariableForPaint(paints[0], 'color', variable);
+    paints[0] = updatedPaint;
+    (paintNode as any)[field] = paints;
+    return;
+  }
+
+  // For all other fields, use standard setBoundVariable
+  if (!('setBoundVariable' in node)) {
+    throw new Error(`Node type ${node.type} does not support variable binding`);
+  }
+  const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable) => void };
+  bindableNode.setBoundVariable(field as VariableBindableNodeField, variable);
+}
+
+/**
  * Bind a variable to a node field
  */
 export async function bindVariable(
@@ -376,14 +409,7 @@ export async function bindVariable(
     throw new Error(`Variable not found: ${variableId}`);
   }
 
-  // Check if node supports setBoundVariable
-  if (!('setBoundVariable' in node)) {
-    throw new Error(`Node type ${node.type} does not support variable binding`);
-  }
-
-  // Bind the variable
-  const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable) => void };
-  bindableNode.setBoundVariable(field as VariableBindableNodeField, variable);
+  await bindVariableToNode(node as SceneNode, field, variable);
 
   return {
     success: true,
@@ -436,6 +462,129 @@ export async function unbindVariable(
 // =============================================================================
 // Batch Operations
 // =============================================================================
+
+/**
+ * Bind variables to multiple nodes in a batch operation
+ */
+export async function bindMultipleVariables(
+  params: CommandParams['bind_multiple_variables']
+): Promise<{
+  success: boolean;
+  successCount: number;
+  failureCount: number;
+  totalBindings: number;
+  results: Array<{ success: boolean; nodeId: string; field: string; variableId: string; error?: string }>;
+  commandId: string;
+}> {
+  const { bindings } = params;
+  const commandId = generateCommandId();
+
+  if (!bindings || !Array.isArray(bindings) || bindings.length === 0) {
+    throw new Error('Missing or invalid bindings parameter');
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'bind_multiple_variables',
+    'started',
+    0,
+    bindings.length,
+    0,
+    `Starting to bind variables on ${bindings.length} nodes`,
+    { totalBindings: bindings.length }
+  );
+
+  const results: Array<{ success: boolean; nodeId: string; field: string; variableId: string; error?: string }> = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Cache variables to avoid repeated lookups
+  const variableCache = new Map<string, Variable>();
+
+  // Process in chunks of 5
+  const CHUNK_SIZE = 5;
+  const chunks: Array<typeof bindings> = [];
+  for (let i = 0; i < bindings.length; i += CHUNK_SIZE) {
+    chunks.push(bindings.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+
+    sendProgressUpdate(
+      commandId,
+      'bind_multiple_variables',
+      'in_progress',
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      bindings.length,
+      successCount + failureCount,
+      `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+      { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+    );
+
+    const chunkPromises = chunk.map(async ({ nodeId, field, variableId }) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          return { success: false, nodeId, field, variableId, error: `Node not found: ${nodeId}` };
+        }
+
+        let variable = variableCache.get(variableId);
+        if (!variable) {
+          const v = await figma.variables.getVariableByIdAsync(variableId);
+          if (!v) {
+            return { success: false, nodeId, field, variableId, error: `Variable not found: ${variableId}` };
+          }
+          variable = v;
+          variableCache.set(variableId, v);
+        }
+
+        await bindVariableToNode(node as SceneNode, field, variable);
+        return { success: true, nodeId, field, variableId };
+      } catch (error) {
+        return { success: false, nodeId, field, variableId, error: (error as Error).message };
+      }
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    if (chunkIndex < chunks.length - 1) {
+      await delay(100);
+    }
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'bind_multiple_variables',
+    'completed',
+    100,
+    bindings.length,
+    successCount + failureCount,
+    `Variable binding complete: ${successCount} successful, ${failureCount} failed`,
+    { results }
+  );
+
+  const message = `✅ Bound ${successCount} variables` + (failureCount > 0 ? ` (${failureCount} failed)` : '');
+  figma.notify(message);
+
+  return {
+    success: successCount > 0,
+    successCount,
+    failureCount,
+    totalBindings: bindings.length,
+    results,
+    commandId,
+  };
+}
 
 /**
  * Create multiple variables in a single collection (batch)

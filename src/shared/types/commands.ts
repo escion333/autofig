@@ -62,6 +62,7 @@ export type FigmaCommand =
   | 'delete_variable'
   | 'get_bound_variables'
   | 'bind_variable'
+  | 'bind_multiple_variables'
   | 'unbind_variable'
   // Typography
   | 'get_available_fonts'
@@ -99,6 +100,8 @@ export type FigmaCommand =
   // Layout
   | 'move_node'
   | 'resize_node'
+  | 'rename_node'
+  | 'rename_multiple_nodes'
   | 'delete_node'
   | 'delete_multiple_nodes'
   | 'clone_node'
@@ -122,9 +125,12 @@ export type FigmaCommand =
   | 'create_component_instance'
   | 'get_component_properties'
   | 'add_component_property'
+  | 'delete_component_property'
+  | 'edit_component_property'
   | 'set_component_property_value'
   | 'get_instance_overrides'
   | 'set_instance_overrides'
+  | 'set_component_property_references'
   // Text
   | 'set_text_content'
   | 'scan_text_nodes'
@@ -216,6 +222,13 @@ export interface CommandParams {
     nodeId: string;
     field: VariableBindableField;
     variableId: string;
+  };
+  bind_multiple_variables: {
+    bindings: Array<{
+      nodeId: string;
+      field: VariableBindableField;
+      variableId: string;
+    }>;
   };
   unbind_variable: {
     nodeId: string;
@@ -523,6 +536,16 @@ export interface CommandParams {
     x: number;
     y: number;
   };
+  rename_node: {
+    nodeId: string;
+    name: string;
+  };
+  rename_multiple_nodes: {
+    renames: Array<{
+      nodeId: string;
+      name: string;
+    }>;
+  };
   resize_node: {
     nodeId: string;
     width: number;
@@ -600,7 +623,8 @@ export interface CommandParams {
     name?: string;
   };
   create_component_instance: {
-    componentKey: string;
+    componentKey?: string;
+    componentId?: string;
     x?: number;
     y?: number;
     parentId?: string;
@@ -616,10 +640,25 @@ export interface CommandParams {
     preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
     variantOptions?: string[];
   };
+  delete_component_property: {
+    componentId: string;
+    propertyName: string;
+  };
+  edit_component_property: {
+    componentId: string;
+    propertyName: string;
+    newName?: string;
+    defaultValue?: string | boolean;
+    preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
+  };
   set_component_property_value: {
     instanceId: string;
     propertyName: string;
     value: string | boolean;
+  };
+  set_component_property_references: {
+    nodeId: string;
+    references: Record<string, string>;
   };
   get_instance_overrides: {
     instanceNodeId?: string;

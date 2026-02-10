@@ -58,6 +58,7 @@ import {
   deleteVariable,
   getBoundVariables,
   bindVariable,
+  bindMultipleVariables,
   unbindVariable,
 } from './variables';
 
@@ -98,6 +99,8 @@ import {
 import {
   moveNode,
   resizeNode,
+  renameNode,
+  renameMultipleNodes,
   deleteNode,
   deleteMultipleNodes,
   cloneNode,
@@ -131,7 +134,10 @@ import {
   createComponentInstance,
   getComponentProperties,
   addComponentProperty,
+  deleteComponentProperty,
+  editComponentProperty,
   setComponentPropertyValue,
+  setComponentPropertyReferences,
   getInstanceOverrides,
   setInstanceOverrides,
 } from './components';
@@ -264,6 +270,8 @@ export async function handleCommand(
       return await getBoundVariables(params as CommandParams['get_bound_variables']);
     case 'bind_variable':
       return await bindVariable(params as CommandParams['bind_variable']);
+    case 'bind_multiple_variables':
+      return await bindMultipleVariables(params as CommandParams['bind_multiple_variables']);
     case 'unbind_variable':
       return await unbindVariable(params as CommandParams['unbind_variable']);
 
@@ -338,6 +346,10 @@ export async function handleCommand(
       return await moveNode(params as CommandParams['move_node']);
     case 'resize_node':
       return await resizeNode(params as CommandParams['resize_node']);
+    case 'rename_node':
+      return await renameNode(params as CommandParams['rename_node']);
+    case 'rename_multiple_nodes':
+      return await renameMultipleNodes(params as CommandParams['rename_multiple_nodes']);
     case 'delete_node':
       return await deleteNode(params as CommandParams['delete_node']);
     case 'delete_multiple_nodes':
@@ -384,8 +396,14 @@ export async function handleCommand(
       return await getComponentProperties(params as CommandParams['get_component_properties']);
     case 'add_component_property':
       return await addComponentProperty(params as CommandParams['add_component_property']);
+    case 'delete_component_property':
+      return await deleteComponentProperty(params as CommandParams['delete_component_property']);
+    case 'edit_component_property':
+      return await editComponentProperty(params as CommandParams['edit_component_property']);
     case 'set_component_property_value':
       return await setComponentPropertyValue(params as CommandParams['set_component_property_value']);
+    case 'set_component_property_references':
+      return await setComponentPropertyReferences(params as CommandParams['set_component_property_references']);
     case 'get_instance_overrides':
       return await getInstanceOverrides(params as CommandParams['get_instance_overrides']);
     case 'set_instance_overrides':

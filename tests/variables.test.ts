@@ -385,10 +385,12 @@ describe('Variables API', () => {
   });
 
   describe('bindVariable', () => {
-    it('should bind a variable to a node field', async () => {
+    it('should bind a variable to a node field using paint-level API for fills', async () => {
+      const mockPaint = { type: 'SOLID', color: { r: 1, g: 0, b: 0 } };
       const mockNode = {
         id: 'node-1',
         type: 'FRAME',
+        fills: [mockPaint],
         setBoundVariable: vi.fn(),
       };
       const mockVar = mockVariables[0];
@@ -401,18 +403,38 @@ describe('Variables API', () => {
         variableId: 'var-1',
       });
 
-      expect(mockNode.setBoundVariable).toHaveBeenCalledWith('fills', mockVar);
+      expect(figmaMock.variables.setBoundVariableForPaint).toHaveBeenCalledWith(mockPaint, 'color', mockVar);
       expect(result.success).toBe(true);
       expect(result.nodeId).toBe('node-1');
       expect(result.field).toBe('fills');
       expect(result.variableId).toBe('var-1');
     });
 
+    it('should bind a variable to a non-paint field using setBoundVariable', async () => {
+      const mockNode = {
+        id: 'node-1',
+        type: 'FRAME',
+        setBoundVariable: vi.fn(),
+      };
+      const mockVar = mockVariables[0];
+      figmaMock.getNodeByIdAsync.mockResolvedValue(mockNode);
+      figmaMock.variables.getVariableByIdAsync.mockResolvedValue(mockVar);
+
+      const result = await bindVariable({
+        nodeId: 'node-1',
+        field: 'cornerRadius',
+        variableId: 'var-1',
+      });
+
+      expect(mockNode.setBoundVariable).toHaveBeenCalledWith('cornerRadius', mockVar);
+      expect(result.success).toBe(true);
+    });
+
     it('should throw error when node does not support binding', async () => {
       const mockNode = {
         id: 'node-1',
         type: 'PAGE',
-        // No setBoundVariable method
+        // No setBoundVariable method and no fills
       };
       figmaMock.getNodeByIdAsync.mockResolvedValue(mockNode);
       figmaMock.variables.getVariableByIdAsync.mockResolvedValue(mockVariables[0]);
@@ -420,7 +442,7 @@ describe('Variables API', () => {
       await expect(
         bindVariable({
           nodeId: 'node-1',
-          field: 'fills',
+          field: 'cornerRadius',
           variableId: 'var-1',
         })
       ).rejects.toThrow('does not support variable binding');

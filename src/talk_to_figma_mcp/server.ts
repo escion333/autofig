@@ -98,7 +98,13 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
 
   // Node scanning operations
   'scan_nodes_by_types': 90000,        // 90 seconds - scanning large subtrees
-  
+
+  // Variable batch binding
+  'bind_multiple_variables': 300000,   // 5 minutes - batch variable binding
+
+  // Node rename operations
+  'rename_multiple_nodes': 300000,     // 5 minutes - batch node renaming
+
   // Default timeout for all other commands
   'default': 30000                     // 30 seconds
 };
@@ -1997,6 +2003,38 @@ server.tool(
   }
 );
 
+// Set Component Property References Tool
+server.tool(
+  "set_component_property_references",
+  "Bind a nested instance node inside a component to an INSTANCE_SWAP property via componentPropertyReferences. This wires up the instance so it becomes swappable on any instance of the parent component. Returns: {success, nodeId, references}. Example: set_component_property_references(nodeId='36:100', references={mainComponent: 'leadingIcon#36:0'}). Related: add_component_property, get_component_properties",
+  {
+    nodeId: z.string().describe("The ID of the instance node inside the component to bind"),
+    references: z.record(z.string(), z.string()).describe("Property references map, e.g. { mainComponent: 'propertyName#hash' } for INSTANCE_SWAP binding"),
+  },
+  async ({ nodeId, references }: { nodeId: string; references: Record<string, string> }) => {
+    try {
+      const result = await sendCommandToFigma("set_component_property_references", { nodeId, references });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting component property references: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Get Annotations Tool
 server.tool(
   "get_annotations",
@@ -2202,18 +2240,22 @@ server.tool(
 // Create Component Instance Tool
 server.tool(
   "create_component_instance",
-  "Create a new instance (copy) of a component at specified position. Component updates will reflect in all instances. Returns: {id, name, componentKey}. Example: create_component_instance(componentKey='abc123', x=100, y=100). Use get_local_components to find component keys.",
+  "Create a new instance (copy) of a component. Provide componentKey (for remote/library components) or componentId (for local components by node ID). Returns: {id, name, componentId}. Example: create_component_instance(componentId='36:31762', parentId='36:26473'). Related: get_local_components",
   {
-    componentKey: z.string().describe("Key of the component to instantiate"),
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
+    componentId: z.string().optional().describe("Node ID of a local component to instantiate (preferred for local components)"),
+    x: z.number().optional().describe("X position").default(0),
+    y: z.number().optional().describe("Y position").default(0),
+    parentId: z.string().optional().describe("Parent node ID to append the instance into (e.g., a frame or component variant)"),
   },
-  async ({ componentKey, x, y }: any) => {
+  async ({ componentKey, componentId, x, y, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_component_instance", {
         componentKey,
+        componentId,
         x,
         y,
+        parentId,
       });
       const typedResult = result as getInstanceOverridesResult;
       return {
@@ -3839,7 +3881,7 @@ server.tool(
 
       // Use the plugin's scan_nodes_by_types function
       const result = await sendCommandToFigma("scan_nodes_by_types", {
-        nodeId,
+        parentNodeId: nodeId,
         types
       });
 
@@ -3896,6 +3938,209 @@ server.tool(
             type: "text",
             text: `Error scanning nodes by types: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Bind Multiple Variables Tool (batch)
+server.tool(
+  "bind_multiple_variables",
+  "Bind a variable to a field on multiple nodes in a single batch operation. Supports fills/strokes paint-level binding. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalBindings, results}. Example: bind_multiple_variables(bindings=[{nodeId:'1:2', field:'fills', variableId:'VariableID:41:33984'}, ...]). Related: bind_variable, get_bound_variables",
+  {
+    bindings: z.array(z.object({
+      nodeId: z.string().describe("ID of the node to bind"),
+      field: z.string().describe("Field to bind (fills, strokes, cornerRadius, opacity, etc.)"),
+      variableId: z.string().describe("ID of the variable to bind"),
+    })).describe("Array of bindings to apply"),
+  },
+  async ({ bindings }: any) => {
+    try {
+      const result = await sendCommandToFigma("bind_multiple_variables", { bindings });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalBindings: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch variable binding complete: ${typedResult.successCount}/${typedResult.totalBindings} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error binding variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Rename Node Tool
+server.tool(
+  "rename_node",
+  "Rename a single node. Returns: {id, name}. Example: rename_node(nodeId='123:456', name='Icon/Navigation/arrow-left'). Use for organizing layer names. Related: rename_multiple_nodes, get_node_info",
+  {
+    nodeId: z.string().describe("ID of the node to rename"),
+    name: z.string().describe("New name for the node"),
+  },
+  async ({ nodeId, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("rename_node", { nodeId, name });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Renamed node ${nodeId} to "${name}"`,
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Rename Multiple Nodes Tool (batch)
+server.tool(
+  "rename_multiple_nodes",
+  "Rename multiple nodes in a single batch operation. Processes in chunks of 5 with progress updates. Returns: {success, successCount, failureCount, totalNodes, results}. Example: rename_multiple_nodes(renames=[{nodeId:'1:2', name:'Icon/Nav/arrow-left'}, ...]). Related: rename_node, scan_nodes_by_types",
+  {
+    renames: z.array(z.object({
+      nodeId: z.string().describe("ID of the node to rename"),
+      name: z.string().describe("New name for the node"),
+    })).describe("Array of renames to apply"),
+  },
+  async ({ renames }: any) => {
+    try {
+      const result = await sendCommandToFigma("rename_multiple_nodes", { renames });
+      const typedResult = result as { success: boolean; successCount: number; failureCount: number; totalNodes: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch rename complete: ${typedResult.successCount}/${typedResult.totalNodes} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming nodes: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Delete Component Property Tool
+server.tool(
+  "delete_component_property",
+  "Delete a property from a component or component set. Use the full property name including hash suffix (e.g. 'testBool#36:0'). Returns: {success, componentId, propertyName}. Example: delete_component_property(componentId='36:26518', propertyName='testBool#36:0'). Related: add_component_property, get_component_properties",
+  {
+    componentId: z.string().describe("ID of the component or component set"),
+    propertyName: z.string().describe("Full property name to delete (including hash suffix, e.g. 'testBool#36:0')"),
+  },
+  async ({ componentId, propertyName }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_component_property", { componentId, propertyName });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Deleted property "${propertyName}" from component ${componentId}`,
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting component property: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Edit Component Property Tool
+server.tool(
+  "edit_component_property",
+  "Edit an existing property on a component/set IN-PLACE without breaking internal wiring. Use this to update preferredValues, defaultValue, or rename a property. Unlike delete+re-add, this preserves the link between the property definition and child nodes (critical for INSTANCE_SWAP). Returns: {success, componentId, propertyName, updatedPropertyName}. Example: edit_component_property(componentId='36:26518', propertyName='leadingIcon#36:46', preferredValues=[{type:'COMPONENT', key:'abc123'}]). Related: add_component_property, get_component_properties, delete_component_property",
+  {
+    componentId: z.string().describe("ID of the component or component set"),
+    propertyName: z.string().describe("Full property name including hash suffix (e.g. 'leadingIcon#36:46')"),
+    newName: z.string().optional().describe("New display name for the property (without hash suffix)"),
+    defaultValue: z.union([z.string(), z.boolean()]).optional().describe("New default value for the property"),
+    preferredValues: z.array(z.object({
+      type: z.enum(["COMPONENT", "COMPONENT_SET"]),
+      key: z.string(),
+    })).optional().describe("For INSTANCE_SWAP: set the preferred components shown in the swap dropdown"),
+  },
+  async ({ componentId, propertyName, newName, defaultValue, preferredValues }: {
+    componentId: string;
+    propertyName: string;
+    newName?: string;
+    defaultValue?: string | boolean;
+    preferredValues?: Array<{ type: "COMPONENT" | "COMPONENT_SET"; key: string }>;
+  }) => {
+    try {
+      const result = await sendCommandToFigma("edit_component_property", {
+        componentId,
+        propertyName,
+        newName,
+        defaultValue,
+        preferredValues,
+      });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error editing component property: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

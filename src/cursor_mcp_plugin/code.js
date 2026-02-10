@@ -2023,6 +2023,28 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(getBoundVariables, "getBoundVariables");
+  async function bindVariableToNode(node, field, variable) {
+    if (field === "fills" || field === "strokes") {
+      if (!(field in node)) {
+        throw new Error(`Node type ${node.type} does not support ${field}`);
+      }
+      const paintNode = node;
+      const paints = [...paintNode[field]];
+      if (paints.length === 0) {
+        throw new Error(`Node has no ${field} to bind variable to`);
+      }
+      const updatedPaint = figma.variables.setBoundVariableForPaint(paints[0], "color", variable);
+      paints[0] = updatedPaint;
+      paintNode[field] = paints;
+      return;
+    }
+    if (!("setBoundVariable" in node)) {
+      throw new Error(`Node type ${node.type} does not support variable binding`);
+    }
+    const bindableNode = node;
+    bindableNode.setBoundVariable(field, variable);
+  }
+  __name(bindVariableToNode, "bindVariableToNode");
   async function bindVariable(params) {
     const { nodeId, field, variableId } = params;
     if (!nodeId) {
@@ -2042,11 +2064,7 @@ The node may have been deleted or the ID is invalid.
     if (!variable) {
       throw new Error(`Variable not found: ${variableId}`);
     }
-    if (!("setBoundVariable" in node)) {
-      throw new Error(`Node type ${node.type} does not support variable binding`);
-    }
-    const bindableNode = node;
-    bindableNode.setBoundVariable(field, variable);
+    await bindVariableToNode(node, field, variable);
     return {
       success: true,
       nodeId,
@@ -2079,6 +2097,99 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(unbindVariable, "unbindVariable");
+  async function bindMultipleVariables(params) {
+    const { bindings } = params;
+    const commandId = generateCommandId();
+    if (!bindings || !Array.isArray(bindings) || bindings.length === 0) {
+      throw new Error("Missing or invalid bindings parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "bind_multiple_variables",
+      "started",
+      0,
+      bindings.length,
+      0,
+      `Starting to bind variables on ${bindings.length} nodes`,
+      { totalBindings: bindings.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const variableCache = /* @__PURE__ */ new Map();
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < bindings.length; i += CHUNK_SIZE) {
+      chunks.push(bindings.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "bind_multiple_variables",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        bindings.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, field, variableId }) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, field, variableId, error: `Node not found: ${nodeId}` };
+          }
+          let variable = variableCache.get(variableId);
+          if (!variable) {
+            const v = await figma.variables.getVariableByIdAsync(variableId);
+            if (!v) {
+              return { success: false, nodeId, field, variableId, error: `Variable not found: ${variableId}` };
+            }
+            variable = v;
+            variableCache.set(variableId, v);
+          }
+          await bindVariableToNode(node, field, variable);
+          return { success: true, nodeId, field, variableId };
+        } catch (error) {
+          return { success: false, nodeId, field, variableId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "bind_multiple_variables",
+      "completed",
+      100,
+      bindings.length,
+      successCount + failureCount,
+      `Variable binding complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Bound ${successCount} variables` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalBindings: bindings.length,
+      results,
+      commandId
+    };
+  }
+  __name(bindMultipleVariables, "bindMultipleVariables");
   async function createMultipleVariables(params) {
     const { collectionId, variables } = params;
     const commandId = generateCommandId();
@@ -3515,6 +3626,106 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(moveBackward, "moveBackward");
+  async function renameNode(params) {
+    const { nodeId, name } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    const node = await getNodeById(nodeId);
+    const oldName = node.name;
+    node.name = name;
+    return {
+      id: node.id,
+      name: node.name
+    };
+  }
+  __name(renameNode, "renameNode");
+  async function renameMultipleNodes(params) {
+    const { renames } = params || {};
+    const commandId = generateCommandId();
+    if (!renames || !Array.isArray(renames) || renames.length === 0) {
+      throw new Error("Missing or invalid renames parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "rename_multiple_nodes",
+      "started",
+      0,
+      renames.length,
+      0,
+      `Starting to rename ${renames.length} nodes`,
+      { totalNodes: renames.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < renames.length; i += CHUNK_SIZE) {
+      chunks.push(renames.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "rename_multiple_nodes",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        renames.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, name }) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, newName: name, error: `Node not found: ${nodeId}` };
+          }
+          node.name = name;
+          return { success: true, nodeId, newName: name };
+        } catch (error) {
+          return { success: false, nodeId, newName: name, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "rename_multiple_nodes",
+      "completed",
+      100,
+      renames.length,
+      successCount + failureCount,
+      `Node rename complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    const message = `\u2705 Renamed ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : "");
+    figma.notify(message);
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalNodes: renames.length,
+      results,
+      commandId
+    };
+  }
+  __name(renameMultipleNodes, "renameMultipleNodes");
 
   // src/figma-plugin/handlers/grid-styles.ts
   function layoutGridInputToFigma(input) {
@@ -4018,7 +4229,15 @@ The node may have been deleted or the ID is invalid.
       throw new Error(`Node is not a component or component set (type: ${node.type})`);
     }
     const componentNode = node;
-    componentNode.addComponentProperty(propertyName, propertyType, defaultValue);
+    const options = {};
+    if (preferredValues && preferredValues.length > 0) {
+      options.preferredValues = preferredValues;
+    }
+    if (Object.keys(options).length > 0) {
+      componentNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+    } else {
+      componentNode.addComponentProperty(propertyName, propertyType, defaultValue);
+    }
     return {
       success: true,
       componentId: componentNode.id,
@@ -4027,6 +4246,72 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(addComponentProperty, "addComponentProperty");
+  async function deleteComponentProperty(params) {
+    const { componentId, propertyName } = params;
+    if (!componentId) {
+      throw new Error("Missing componentId parameter");
+    }
+    if (!propertyName) {
+      throw new Error("Missing propertyName parameter");
+    }
+    const node = await figma.getNodeByIdAsync(componentId);
+    if (!node) {
+      throw new Error(`Node not found: ${componentId}`);
+    }
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+      throw new Error(`Node is not a component or component set (type: ${node.type})`);
+    }
+    const componentNode = node;
+    componentNode.deleteComponentProperty(propertyName);
+    return {
+      success: true,
+      componentId: componentNode.id,
+      propertyName
+    };
+  }
+  __name(deleteComponentProperty, "deleteComponentProperty");
+  async function editComponentProperty(params) {
+    var _a;
+    const { componentId, propertyName, newName, defaultValue, preferredValues } = params;
+    if (!componentId) {
+      throw new Error("Missing componentId parameter");
+    }
+    if (!propertyName) {
+      throw new Error("Missing propertyName parameter");
+    }
+    const node = await figma.getNodeByIdAsync(componentId);
+    if (!node) {
+      throw new Error(`Node not found: ${componentId}`);
+    }
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+      throw new Error(`Node is not a component or component set (type: ${node.type})`);
+    }
+    const componentNode = node;
+    if (!((_a = componentNode.componentPropertyDefinitions) == null ? void 0 : _a[propertyName])) {
+      throw new Error(`Property "${propertyName}" not found on component ${componentId}. Available: ${Object.keys(componentNode.componentPropertyDefinitions || {}).join(", ")}`);
+    }
+    const newValue = {};
+    if (newName !== void 0) {
+      newValue.name = newName;
+    }
+    if (defaultValue !== void 0) {
+      newValue.defaultValue = defaultValue;
+    }
+    if (preferredValues !== void 0) {
+      newValue.preferredValues = preferredValues;
+    }
+    if (Object.keys(newValue).length === 0) {
+      throw new Error("At least one of newName, defaultValue, or preferredValues must be provided");
+    }
+    const updatedPropertyName = componentNode.editComponentProperty(propertyName, newValue);
+    return {
+      success: true,
+      componentId: componentNode.id,
+      propertyName,
+      updatedPropertyName
+    };
+  }
+  __name(editComponentProperty, "editComponentProperty");
   async function setComponentPropertyValue(params) {
     const { instanceId, propertyName, value } = params;
     if (!instanceId) {
@@ -4059,12 +4344,24 @@ The node may have been deleted or the ID is invalid.
   __name(setComponentPropertyValue, "setComponentPropertyValue");
   async function createComponentInstance(params) {
     var _a;
-    const { componentKey, x = 0, y = 0, parentId } = params || {};
-    if (!componentKey) {
-      throw new Error("Missing componentKey parameter");
+    const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
+    if (!componentKey && !componentId) {
+      throw new Error("Either componentKey or componentId must be provided");
     }
     try {
-      const component = await figma.importComponentByKeyAsync(componentKey);
+      let component;
+      if (componentId) {
+        const node = await figma.getNodeByIdAsync(componentId);
+        if (!node) {
+          throw new Error(`Component not found: ${componentId}`);
+        }
+        if (node.type !== "COMPONENT") {
+          throw new Error(`Node ${componentId} is not a component (type: ${node.type})`);
+        }
+        component = node;
+      } else {
+        component = await figma.importComponentByKeyAsync(componentKey);
+      }
       const instance = component.createInstance();
       instance.x = x;
       instance.y = y;
@@ -4092,6 +4389,29 @@ The node may have been deleted or the ID is invalid.
     }
   }
   __name(createComponentInstance, "createComponentInstance");
+  async function setComponentPropertyReferences(params) {
+    const { nodeId, references } = params;
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    if (!references || Object.keys(references).length === 0) {
+      throw new Error("Missing or empty references parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    if (!("componentPropertyReferences" in node)) {
+      throw new Error(`Node ${nodeId} (type: ${node.type}) does not support componentPropertyReferences`);
+    }
+    node.componentPropertyReferences = references;
+    return {
+      success: true,
+      nodeId,
+      references
+    };
+  }
+  __name(setComponentPropertyReferences, "setComponentPropertyReferences");
   async function getInstanceOverrides(params) {
     const { instanceNodeId } = params || {};
     let sourceInstance = null;
@@ -4912,6 +5232,8 @@ The node may have been deleted or the ID is invalid.
         return await getBoundVariables(params);
       case "bind_variable":
         return await bindVariable(params);
+      case "bind_multiple_variables":
+        return await bindMultipleVariables(params);
       case "unbind_variable":
         return await unbindVariable(params);
       // Typography
@@ -4980,6 +5302,10 @@ The node may have been deleted or the ID is invalid.
         return await moveNode(params);
       case "resize_node":
         return await resizeNode(params);
+      case "rename_node":
+        return await renameNode(params);
+      case "rename_multiple_nodes":
+        return await renameMultipleNodes(params);
       case "delete_node":
         return await deleteNode(params);
       case "delete_multiple_nodes":
@@ -5023,8 +5349,14 @@ The node may have been deleted or the ID is invalid.
         return await getComponentProperties(params);
       case "add_component_property":
         return await addComponentProperty(params);
+      case "delete_component_property":
+        return await deleteComponentProperty(params);
+      case "edit_component_property":
+        return await editComponentProperty(params);
       case "set_component_property_value":
         return await setComponentPropertyValue(params);
+      case "set_component_property_references":
+        return await setComponentPropertyReferences(params);
       case "get_instance_overrides":
         return await getInstanceOverrides(params);
       case "set_instance_overrides":
@@ -5065,13 +5397,20 @@ The node may have been deleted or the ID is invalid.
 
   // src/figma-plugin/code.ts
   var state = {
-    serverPort: 3055
+    serverPort: 3055,
+    channelName: null
   };
   figma.showUI(__html__, { width: 350, height: 450 });
   figma.ui.onmessage = async (msg) => {
     switch (msg.type) {
       case "update-settings":
         updateSettings(msg);
+        break;
+      case "save-channel":
+        if (msg.channelName) {
+          state.channelName = msg.channelName;
+          await figma.clientStorage.setAsync("channelName", msg.channelName);
+        }
         break;
       case "notify":
         if (msg.message) {
@@ -5122,15 +5461,20 @@ The node may have been deleted or the ID is invalid.
   async function initializePlugin() {
     try {
       const savedSettings = await figma.clientStorage.getAsync("settings");
+      const savedChannel = await figma.clientStorage.getAsync("channelName");
       if (savedSettings) {
         if (savedSettings.serverPort) {
           state.serverPort = savedSettings.serverPort;
         }
       }
+      if (savedChannel) {
+        state.channelName = savedChannel;
+      }
       figma.ui.postMessage({
         type: "init-settings",
         settings: {
-          serverPort: state.serverPort
+          serverPort: state.serverPort,
+          channelName: state.channelName
         }
       });
     } catch (error) {

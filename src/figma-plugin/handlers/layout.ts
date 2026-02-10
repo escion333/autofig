@@ -604,3 +604,129 @@ export async function moveBackward(params: CommandParams['move_backward']): Prom
   };
 }
 
+// ============================================================================
+// Rename Operations
+// ============================================================================
+
+/**
+ * Rename a single node
+ */
+export async function renameNode(params: CommandParams['rename_node']): Promise<NodeResult> {
+  const { nodeId, name } = params || {};
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+  if (!name) {
+    throw new Error('Missing name parameter');
+  }
+
+  const node = await getNodeById(nodeId);
+  const oldName = node.name;
+  node.name = name;
+
+  return {
+    id: node.id,
+    name: node.name,
+  };
+}
+
+/**
+ * Rename multiple nodes with progress tracking
+ */
+export async function renameMultipleNodes(params: CommandParams['rename_multiple_nodes']) {
+  const { renames } = params || {};
+  const commandId = generateCommandId();
+
+  if (!renames || !Array.isArray(renames) || renames.length === 0) {
+    throw new Error('Missing or invalid renames parameter');
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'rename_multiple_nodes',
+    'started',
+    0,
+    renames.length,
+    0,
+    `Starting to rename ${renames.length} nodes`,
+    { totalNodes: renames.length }
+  );
+
+  const results: Array<{ success: boolean; nodeId: string; newName: string; error?: string }> = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  const CHUNK_SIZE = 5;
+  const chunks: Array<typeof renames> = [];
+  for (let i = 0; i < renames.length; i += CHUNK_SIZE) {
+    chunks.push(renames.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+
+    sendProgressUpdate(
+      commandId,
+      'rename_multiple_nodes',
+      'in_progress',
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      renames.length,
+      successCount + failureCount,
+      `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+      { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+    );
+
+    const chunkPromises = chunk.map(async ({ nodeId, name }) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          return { success: false, nodeId, newName: name, error: `Node not found: ${nodeId}` };
+        }
+        node.name = name;
+        return { success: true, nodeId, newName: name };
+      } catch (error) {
+        return { success: false, nodeId, newName: name, error: (error as Error).message };
+      }
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    if (chunkIndex < chunks.length - 1) {
+      await delay(100);
+    }
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'rename_multiple_nodes',
+    'completed',
+    100,
+    renames.length,
+    successCount + failureCount,
+    `Node rename complete: ${successCount} successful, ${failureCount} failed`,
+    { results }
+  );
+
+  const message = `✅ Renamed ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : '');
+  figma.notify(message);
+
+  return {
+    success: successCount > 0,
+    successCount,
+    failureCount,
+    totalNodes: renames.length,
+    results,
+    commandId,
+  };
+}
+

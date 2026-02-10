@@ -14,10 +14,12 @@ import type { FigmaCommand, CommandParams } from '../shared/types';
 
 interface PluginState {
   serverPort: number;
+  channelName: string | null;
 }
 
 const state: PluginState = {
   serverPort: 3055,
+  channelName: null,
 };
 
 // ============================================================================
@@ -38,10 +40,18 @@ figma.ui.onmessage = async (msg: {
   message?: string;
   text?: string;
   serverPort?: number;
+  channelName?: string;
 }) => {
   switch (msg.type) {
     case 'update-settings':
       updateSettings(msg);
+      break;
+
+    case 'save-channel':
+      if (msg.channelName) {
+        state.channelName = msg.channelName;
+        await figma.clientStorage.setAsync('channelName', msg.channelName);
+      }
       break;
 
     case 'notify':
@@ -117,11 +127,16 @@ function updateSettings(settings: { serverPort?: number }): void {
 async function initializePlugin(): Promise<void> {
   try {
     const savedSettings = await figma.clientStorage.getAsync('settings') as { serverPort?: number } | undefined;
-    
+    const savedChannel = await figma.clientStorage.getAsync('channelName') as string | undefined;
+
     if (savedSettings) {
       if (savedSettings.serverPort) {
         state.serverPort = savedSettings.serverPort;
       }
+    }
+
+    if (savedChannel) {
+      state.channelName = savedChannel;
     }
 
     // Send initial settings to UI
@@ -129,6 +144,7 @@ async function initializePlugin(): Promise<void> {
       type: 'init-settings',
       settings: {
         serverPort: state.serverPort,
+        channelName: state.channelName,
       },
     });
   } catch (error) {

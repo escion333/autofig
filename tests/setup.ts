@@ -191,6 +191,10 @@ const figmaMock = {
       createMockVariable(name, collection, resolvedType)
     ),
     createVariableCollection: vi.fn((name: string) => createMockCollection(name)),
+    setBoundVariableForPaint: vi.fn((paint: any, field: string, variable: any) => ({
+      ...paint,
+      boundVariables: { ...paint.boundVariables, [field]: { type: 'VARIABLE_ALIAS', id: variable.id } },
+    })),
   },
   currentPage: {
     selection: [],

@@ -459,6 +459,7 @@
         serverPort: 3055,
         pendingRequests: new Map(),
         channel: null,
+        savedChannel: null, // Persisted channel name from plugin storage
         reconnectAttempts: 0,
         reconnectTimeout: null,
         manualDisconnect: false, // Track if user manually disconnected
@@ -561,9 +562,9 @@
           state.socket.onopen = () => {
             // Reset reconnection attempts on successful connection
             state.reconnectAttempts = 0;
-            
-            // Generate random channel name
-            const channelName = generateChannelName();
+
+            // Reuse saved channel name, or generate a new one
+            const channelName = state.savedChannel || generateChannelName();
             console.log("Joining channel:", channelName);
             state.channel = channelName;
 
@@ -594,6 +595,17 @@
                   // Show channel name with copy button
                   channelNameText.textContent = channelName;
                   channelDisplay.classList.remove("hidden");
+
+                  // Persist channel name for next reload
+                  parent.postMessage(
+                    {
+                      pluginMessage: {
+                        type: "save-channel",
+                        channelName: channelName,
+                      },
+                    },
+                    "*"
+                  );
 
                   // Notify the plugin code
                   parent.postMessage(
@@ -1095,6 +1107,18 @@
         console.log("Received message from plugin:", message);
 
         switch (message.type) {
+          case "init-settings":
+            if (message.settings) {
+              if (message.settings.serverPort) {
+                portInput.value = message.settings.serverPort;
+                state.serverPort = message.settings.serverPort;
+              }
+              if (message.settings.channelName) {
+                state.savedChannel = message.settings.channelName;
+                console.log("Restored saved channel:", state.savedChannel);
+              }
+            }
+            break;
           case "connection-status":
             updateConnectionStatus(message.connected, message.message);
             break;

@@ -257,14 +257,130 @@ export async function addComponentProperty(
 
   const componentNode = node as ComponentNode | ComponentSetNode;
 
-  // Add the property
-  componentNode.addComponentProperty(propertyName, propertyType, defaultValue);
+  // Build options object for the 4th arg if preferredValues is provided
+  const options: { preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }> } = {};
+  if (preferredValues && preferredValues.length > 0) {
+    options.preferredValues = preferredValues;
+  }
+
+  // Add the property (pass options as 4th arg when present)
+  if (Object.keys(options).length > 0) {
+    componentNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+  } else {
+    componentNode.addComponentProperty(propertyName, propertyType, defaultValue);
+  }
 
   return {
     success: true,
     componentId: componentNode.id,
     propertyName,
     propertyType,
+  };
+}
+
+/**
+ * Delete a property from a component or component set
+ */
+export async function deleteComponentProperty(
+  params: CommandParams['delete_component_property']
+): Promise<{
+  success: boolean;
+  componentId: string;
+  propertyName: string;
+}> {
+  const { componentId, propertyName } = params;
+
+  if (!componentId) {
+    throw new Error('Missing componentId parameter');
+  }
+  if (!propertyName) {
+    throw new Error('Missing propertyName parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(componentId);
+  if (!node) {
+    throw new Error(`Node not found: ${componentId}`);
+  }
+
+  if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') {
+    throw new Error(`Node is not a component or component set (type: ${node.type})`);
+  }
+
+  const componentNode = node as ComponentNode | ComponentSetNode;
+  componentNode.deleteComponentProperty(propertyName);
+
+  return {
+    success: true,
+    componentId: componentNode.id,
+    propertyName,
+  };
+}
+
+/**
+ * Edit an existing property on a component or component set (in-place update, preserves wiring)
+ */
+export async function editComponentProperty(
+  params: CommandParams['edit_component_property']
+): Promise<{
+  success: boolean;
+  componentId: string;
+  propertyName: string;
+  updatedPropertyName: string;
+}> {
+  const { componentId, propertyName, newName, defaultValue, preferredValues } = params;
+
+  if (!componentId) {
+    throw new Error('Missing componentId parameter');
+  }
+  if (!propertyName) {
+    throw new Error('Missing propertyName parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(componentId);
+  if (!node) {
+    throw new Error(`Node not found: ${componentId}`);
+  }
+
+  if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') {
+    throw new Error(`Node is not a component or component set (type: ${node.type})`);
+  }
+
+  const componentNode = node as ComponentNode | ComponentSetNode;
+
+  // Verify the property exists
+  if (!componentNode.componentPropertyDefinitions?.[propertyName]) {
+    throw new Error(`Property "${propertyName}" not found on component ${componentId}. Available: ${Object.keys(componentNode.componentPropertyDefinitions || {}).join(', ')}`);
+  }
+
+  // Build the newValue object from optional fields
+  const newValue: {
+    name?: string;
+    defaultValue?: string | boolean;
+    preferredValues?: Array<{ type: 'COMPONENT' | 'COMPONENT_SET'; key: string }>;
+  } = {};
+
+  if (newName !== undefined) {
+    newValue.name = newName;
+  }
+  if (defaultValue !== undefined) {
+    newValue.defaultValue = defaultValue;
+  }
+  if (preferredValues !== undefined) {
+    newValue.preferredValues = preferredValues;
+  }
+
+  if (Object.keys(newValue).length === 0) {
+    throw new Error('At least one of newName, defaultValue, or preferredValues must be provided');
+  }
+
+  // editComponentProperty returns the (possibly updated) property name
+  const updatedPropertyName = componentNode.editComponentProperty(propertyName, newValue);
+
+  return {
+    success: true,
+    componentId: componentNode.id,
+    propertyName,
+    updatedPropertyName,
   };
 }
 
@@ -316,17 +432,33 @@ export async function setComponentPropertyValue(
 }
 
 /**
- * Create an instance of a component by key
+ * Create an instance of a component by key or node ID
  */
 export async function createComponentInstance(params: CommandParams['create_component_instance']) {
-  const { componentKey, x = 0, y = 0, parentId } = params || {};
+  const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
 
-  if (!componentKey) {
-    throw new Error('Missing componentKey parameter');
+  if (!componentKey && !componentId) {
+    throw new Error('Either componentKey or componentId must be provided');
   }
 
   try {
-    const component = await figma.importComponentByKeyAsync(componentKey);
+    let component: ComponentNode;
+
+    if (componentId) {
+      // Local component lookup by node ID
+      const node = await figma.getNodeByIdAsync(componentId);
+      if (!node) {
+        throw new Error(`Component not found: ${componentId}`);
+      }
+      if (node.type !== 'COMPONENT') {
+        throw new Error(`Node ${componentId} is not a component (type: ${node.type})`);
+      }
+      component = node as ComponentNode;
+    } else {
+      // Import by key (works for remote and local)
+      component = await figma.importComponentByKeyAsync(componentKey!);
+    }
+
     const instance = component.createInstance();
 
     instance.x = x;
@@ -356,6 +488,44 @@ export async function createComponentInstance(params: CommandParams['create_comp
   } catch (error) {
     throw new Error(`Error creating component instance: ${(error as Error).message}`);
   }
+}
+
+/**
+ * Set componentPropertyReferences on an instance node inside a component
+ * This binds a nested instance to an INSTANCE_SWAP property defined on the parent component.
+ */
+export async function setComponentPropertyReferences(
+  params: CommandParams['set_component_property_references']
+): Promise<{
+  success: boolean;
+  nodeId: string;
+  references: Record<string, string>;
+}> {
+  const { nodeId, references } = params;
+
+  if (!nodeId) {
+    throw new Error('Missing nodeId parameter');
+  }
+  if (!references || Object.keys(references).length === 0) {
+    throw new Error('Missing or empty references parameter');
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  if (!('componentPropertyReferences' in node)) {
+    throw new Error(`Node ${nodeId} (type: ${node.type}) does not support componentPropertyReferences`);
+  }
+
+  (node as SceneNode & { componentPropertyReferences: Record<string, string> }).componentPropertyReferences = references;
+
+  return {
+    success: true,
+    nodeId,
+    references,
+  };
 }
 
 /**
