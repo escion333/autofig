@@ -2031,7 +2031,7 @@ The node may have been deleted or the ID is invalid.
       const paintNode = node;
       const paints = [...paintNode[field]];
       if (paints.length === 0) {
-        throw new Error(`Node has no ${field} to bind variable to`);
+        paints.push({ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true });
       }
       const updatedPaint = figma.variables.setBoundVariableForPaint(paints[0], "color", variable);
       paints[0] = updatedPaint;
@@ -5611,7 +5611,7 @@ The node may have been deleted or the ID is invalid.
     serverPort: 3055,
     channelName: null
   };
-  figma.showUI(__html__, { width: 350, height: 450 });
+  figma.showUI(__html__, { width: 350, height: 450, themeColors: true });
   figma.ui.onmessage = async (msg) => {
     var _a, _b;
     switch (msg.type) {

@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Cursor MCP Plugin</title>
+    <title>AutoFig</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -10,7 +10,7 @@
         margin: 0;
         padding: 20px;
         color: #e0e0e0;
-        background-color: #1e1e1e;
+        background-color: var(--figma-color-bg, #1e1e1e);
       }
       .container {
         display: flex;
@@ -158,7 +158,6 @@
       .header-logo-image {
         width: 24px;
         height: 24px;
-        object-fit: contain;
       }
       /* Progress styles */
       .operation-complete {
@@ -253,7 +252,7 @@
         padding: 0 16px;
         height: 44px;
         box-sizing: border-box;
-        background-color: #1e1e1e;
+        background-color: var(--figma-color-bg, #1e1e1e);
       }
       body.minimized { padding: 0; }
       body.minimized .minimize-bar { display: flex; }
@@ -265,7 +264,6 @@
         background-color: #333;
         border-radius: 6px;
         flex-shrink: 0;
-        object-fit: contain;
       }
       .mini-status {
         display: flex;
@@ -327,7 +325,7 @@
   </head>
   <body>
     <div class="minimize-bar">
-      <img class="mini-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAMAAAANIilAAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJcEhZcwAAEJwAABCcASbNOjQAAAB1UExURUdwTP////////////////39/f////////////////////////////7+/v////////////39/f////////////////////////////////////////////////////39/fn5+ejo6P///+rq6uXl5f////Ly8gf4a04AAAAkdFJOUwAOdkZCfz04zIgbT0pkIagnm7C9b6C2LWqSxBMyB11W2Ovsy3D12ZYAAALtSURBVEjHndcJt6ogEADgXNAUcWlxSQVN3/3/P/EBAgJpWdM9p5ue78xANE2n05vIUduffgvn1oA0bX+hvRc1DYjTPHe+tiGIoqhx4zTNq/y72lMURQtmqasuPc4dAmgwfWuZrqquiw8uNnC5BRJT3YXhIZ7Xris0oLjlmOrArz7VHpOb6wpNee0ITVMHvvd25/qgvtFwla8dpxV7xnTi7dbed7iuTY16lZoV7iXQb3cqRgjVgoviKTZSUw2719pbD2OEVu5yjnqeOpZ75lMMobVzfUcwC6lrofGJpdb3jGtj6TkkNKRWtXMsU+ciNdfQUwe+zZ7/vo1CYYgv39G/kShMS6mHL+g8F96K2Uqi52E6j3DFnsc4uR/hMwugYd9bOLoeSTvPE1yx4/sLh9B9fKbziHVM3z/G+dKb5wdKdysxsNCc4+2l/yk7EnrOVhwGBt9auqJ0t9gR13C4cl77bdil88SPuK9jxrXksHjab48Mwo+4ha3aSbZJ52JpC4GFbY7OdsVst4Lls/mKZe1y6fXTonS3RFsIN7C5dAJsO+WiI21jbd8xesFEtoUdLLjH+qGNJ9WRuj3MOOQNycaV6khvsLc0MxsD2Uq7bhcHuBZh4rFdujjT1c6GkaXtszCx3sW3MRRfNjwiI7EjGjGfFjZwUgM9CuNggqRVXz+vOGDTBOCP5UnHE73ghjK1jYNlEIma9UnHBb/qdkvq1MSQjk4yCvGk4UneQylLbWAIio3I1t26q4sNTuM01tqQe9+My5pYv9wk8Ypv92w7JpXYulGoD8aJ3C/bUUp8tW5EuTa2oXI7ZGLzahZYE0l03QqZWI8Lfh1lw+zxEoNIrF8Dm/NQT8rzgz+WP/oQmL6Ud4pud/4DZzMWPKjXZfJufOyiVzzKV4/609yelDaWiZsDc6+DSwOLxNqxeD/6Ah3zf674+Kyf3xUeDi3WDFIKzCpOv/5phB4MD+cs/OWXVdych/GBf/xJd4pL9+1i/wOElMO5v/co4wAAAABJRU5ErkJggg==" />
+      <svg class="mini-logo" width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 0L13 10L24 12L13 14L12 24L11 14L0 12L11 10Z" fill="#D97757"/></svg>
       <div class="mini-status">
         <span id="mini-status-dot" class="mini-dot"></span>
         <span id="mini-status-label" class="mini-label">Disconnected</span>
@@ -340,14 +338,11 @@
     <div class="container">
       <div class="header">
         <div class="header-logo">
-          <img
-            class="header-logo-image"
-            src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAMAAAANIilAAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJcEhZcwAAEJwAABCcASbNOjQAAAB1UExURUdwTP////////////////39/f////////////////////////////7+/v////////////39/f////////////////////////////////////////////////////39/fn5+ejo6P///+rq6uXl5f////Ly8gf4a04AAAAkdFJOUwAOdkZCfz04zIgbT0pkIagnm7C9b6C2LWqSxBMyB11W2Ovsy3D12ZYAAALtSURBVEjHndcJt6ogEADgXNAUcWlxSQVN3/3/P/EBAgJpWdM9p5ue78xANE2n05vIUduffgvn1oA0bX+hvRc1DYjTPHe+tiGIoqhx4zTNq/y72lMURQtmqasuPc4dAmgwfWuZrqquiw8uNnC5BRJT3YXhIZ7Xris0oLjlmOrArz7VHpOb6wpNee0ITVMHvvd25/qgvtFwla8dpxV7xnTi7dbed7iuTY16lZoV7iXQb3cqRgjVgoviKTZSUw2719pbD2OEVu5yjnqeOpZ75lMMobVzfUcwC6lrofGJpdb3jGtj6TkkNKRWtXMsU+ciNdfQUwe+zZ7/vo1CYYgv39G/kShMS6mHL+g8F96K2Uqi52E6j3DFnsc4uR/hMwugYd9bOLoeSTvPE1yx4/sLh9B9fKbziHVM3z/G+dKb5wdKdysxsNCc4+2l/yk7EnrOVhwGBt9auqJ0t9gR13C4cl77bdil88SPuK9jxrXksHjab48Mwo+4ha3aSbZJ52JpC4GFbY7OdsVst4Lls/mKZe1y6fXTonS3RFsIN7C5dAJsO+WiI21jbd8xesFEtoUdLLjH+qGNJ9WRuj3MOOQNycaV6khvsLc0MxsD2Uq7bhcHuBZh4rFdujjT1c6GkaXtszCx3sW3MRRfNjwiI7EjGjGfFjZwUgM9CuNggqRVXz+vOGDTBOCP5UnHE73ghjK1jYNlEIma9UnHBb/qdkvq1MSQjk4yCvGk4UneQylLbWAIio3I1t26q4sNTuM01tqQe9+My5pYv9wk8Ypv92w7JpXYulGoD8aJ3C/bUUp8tW5EuTa2oXI7ZGLzahZYE0l03QqZWI8Lfh1lw+zxEoNIrF8Dm/NQT8rzgz+WP/oQmL6Ud4pud/4DZzMWPKjXZfJufOyiVzzKV4/609yelDaWiZsDc6+DSwOLxNqxeD/6Ah3zf674+Kyf3xUeDi3WDFIKzCpOv/5phB4MD+cs/OWXVdych/GBf/xJd4pL9+1i/wOElMO5v/co4wAAAABJRU5ErkJggg=="
-          />
+          <svg class="header-logo-image" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 0L13 10L24 12L13 14L12 24L11 14L0 12L11 10Z" fill="#D97757"/></svg>
         </div>
         <div class="header-text">
           <h1>AutoFig Plugin <span id="activity-indicator" class="activity-indicator"></span></h1>
-          <p>Connect Figma to Cursor AI using MCP</p>
+          <p>Connect Figma to Claude Code via MCP</p>
         </div>
         <button id="btn-minimize" class="ghost-btn" title="Minimize" style="margin-left: auto;">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -384,7 +379,7 @@
         </div>
 
         <div id="connection-status" class="status disconnected">
-          Not connected to Cursor MCP server
+          Not connected to MCP server
         </div>
         
         <!-- Channel Name Display with Copy Button -->
@@ -431,8 +426,8 @@
         <div class="section">
           <h2>About AutoFig Plugin</h2>
           <p>
-            This plugin allows AI agents to communicate with Figma via MCP, enabling
-            AI-assisted design operations.
+            This plugin allows AI agents to communicate with Figma via MCP,
+            enabling AI-assisted design operations.
             <a
               class="link"
               onclick="window.open(`https://github.com/escion333/autofig`, '_blank')"
@@ -443,9 +438,9 @@
 
           <h2>How to Use</h2>
           <ol>
-            <li>Make sure the MCP server is running in Cursor</li>
+            <li>Make sure the MCP server is running</li>
             <li>Connect to the server using the port number (default: 3055)</li>
-            <li>Once connected, you can interact with Figma through Cursor</li>
+            <li>Once connected, AI agents can interact with Figma via MCP</li>
           </ol>
         </div>
       </div>
@@ -506,8 +501,8 @@
         connectionStatus.innerHTML =
           message ||
           (isConnected
-            ? "Connected to Cursor MCP server"
-            : "Not connected to Cursor MCP server");
+            ? "Connected to MCP server"
+            : "Not connected to MCP server");
         connectionStatus.className = `status ${
           isConnected ? "connected" : "disconnected"
         }`;
@@ -612,7 +607,7 @@
                     {
                       pluginMessage: {
                         type: "notify",
-                        message: `Connected to Cursor MCP server on port ${port} in channel: ${channelName}`,
+                        message: `Connected to MCP server on port ${port} in channel: ${channelName}`,
                       },
                     },
                     "*"

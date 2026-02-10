@@ -26,7 +26,7 @@ const state: PluginState = {
 // UI Setup
 // ============================================================================
 
-figma.showUI(__html__, { width: 350, height: 450 });
+figma.showUI(__html__, { width: 350, height: 450, themeColors: true });
 
 // ============================================================================
 // Message Handlers
