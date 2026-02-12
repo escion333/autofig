@@ -85,7 +85,7 @@ export async function loadFont(params: CommandParams['load_font']): Promise<{ su
  * Get all local text styles
  */
 export async function getTextStyles(): Promise<{ styles: Array<{ id: string; name: string; fontFamily: string; fontStyle: string; fontSize: number }> }> {
-  const styles = figma.getLocalTextStyles();
+  const styles = await figma.getLocalTextStylesAsync();
 
   return {
     styles: styles.map((style) => ({
@@ -197,12 +197,12 @@ export async function applyTextStyle(params: CommandParams['apply_text_style']):
   let style: TextStyle | undefined;
 
   if (styleId) {
-    style = figma.getStyleById(styleId) as TextStyle;
+    style = await figma.getStyleByIdAsync(styleId) as TextStyle;
     if (!style || style.type !== 'TEXT') {
       throw new Error(`Text style not found with ID: ${styleId}`);
     }
   } else if (styleName) {
-    const styles = figma.getLocalTextStyles();
+    const styles = await figma.getLocalTextStylesAsync();
     style = styles.find((s) => s.name === styleName);
     if (!style) {
       throw new Error(`Text style not found with name: "${styleName}"`);
@@ -213,7 +213,7 @@ export async function applyTextStyle(params: CommandParams['apply_text_style']):
   await figma.loadFontAsync(style!.fontName);
 
   // Apply the style
-  textNode.textStyleId = style!.id;
+  await textNode.setTextStyleIdAsync(style!.id);
 
   return {
     id: textNode.id,

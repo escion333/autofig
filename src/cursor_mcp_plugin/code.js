@@ -4040,6 +4040,18 @@ The node may have been deleted or the ID is invalid.
         throw new Error("FILL sizing is only valid on auto-layout children");
       }
       node.layoutSizingHorizontal = horizontal;
+      if (node.type === "TEXT") {
+        const textNode = node;
+        const fonts = textNode.getRangeAllFontNames(0, textNode.characters.length);
+        for (const font of fonts) {
+          await figma.loadFontAsync(font);
+        }
+        if (horizontal === "FILL") {
+          textNode.textAutoResize = "HEIGHT";
+        } else if (horizontal === "HUG") {
+          textNode.textAutoResize = "WIDTH_AND_HEIGHT";
+        }
+      }
     }
     if (vertical !== void 0) {
       if (!validSizing.includes(vertical)) {

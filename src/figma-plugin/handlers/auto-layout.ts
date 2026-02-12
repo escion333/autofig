@@ -151,8 +151,13 @@ export async function setLayoutSizing(params: CommandParams['set_layout_sizing']
   }
 
   const node = await getNodeById(nodeId);
-  assertAutoLayoutSupport(node);
-  assertAutoLayoutEnabled(node);
+
+  // TEXT and other nodes can have layoutSizing when they are children of auto-layout frames
+  const isAutoLayoutChild = node.parent && 'layoutMode' in node.parent && (node.parent as AutoLayoutNode).layoutMode !== 'NONE';
+  if (!isAutoLayoutChild) {
+    assertAutoLayoutSupport(node);
+    assertAutoLayoutEnabled(node);
+  }
 
   const validSizing = ['FIXED', 'HUG', 'FILL'];
 
@@ -170,6 +175,20 @@ export async function setLayoutSizing(params: CommandParams['set_layout_sizing']
       throw new Error('FILL sizing is only valid on auto-layout children');
     }
     node.layoutSizingHorizontal = horizontal;
+    // TEXT nodes need textAutoResize adjusted to match sizing mode
+    if (node.type === 'TEXT') {
+      const textNode = node as TextNode;
+      // Must load fonts before modifying textAutoResize
+      const fonts = textNode.getRangeAllFontNames(0, textNode.characters.length);
+      for (const font of fonts) {
+        await figma.loadFontAsync(font);
+      }
+      if (horizontal === 'FILL') {
+        textNode.textAutoResize = 'HEIGHT';
+      } else if (horizontal === 'HUG') {
+        textNode.textAutoResize = 'WIDTH_AND_HEIGHT';
+      }
+    }
   }
 
   // Validate and set vertical sizing

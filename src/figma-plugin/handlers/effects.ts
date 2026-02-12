@@ -204,7 +204,7 @@ export async function applyEffectStyle(
   let style: EffectStyle | null = null;
 
   if (styleId) {
-    const foundStyle = figma.getStyleById(styleId);
+    const foundStyle = await figma.getStyleByIdAsync(styleId);
     if (foundStyle && foundStyle.type === 'EFFECT') {
       style = foundStyle as EffectStyle;
     }
@@ -222,7 +222,7 @@ export async function applyEffectStyle(
   assertNodeCapability(node, 'effectStyleId', `Node "${node.name}" does not support effect styles`);
 
   // Apply the style
-  (node as BlendMixin).effectStyleId = style.id;
+  await ((node as SceneNode) as MinimalBlendMixin & { setEffectStyleIdAsync(id: string): Promise<void> }).setEffectStyleIdAsync(style.id);
 
   // Provide visual feedback
   provideVisualFeedback(node, `✅ Applied effect style "${style.name}" to ${node.name}`);

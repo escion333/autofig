@@ -30,6 +30,10 @@ Follow the pattern in CONTRIBUTING.md:
 3. Add handler in `src/figma-plugin/handlers/`
 4. Register handler in `src/figma-plugin/handlers/index.ts`
 
+## Model Usage
+
+Use **Sonnet** for all Figma design work (component building, variable binding, cloning, styling, documentation frames, etc.). Opus should only be used in rare cases — complex architectural planning, tricky debugging, or multi-step code refactors that require deep reasoning.
+
 ## Testing
 
 ```bash

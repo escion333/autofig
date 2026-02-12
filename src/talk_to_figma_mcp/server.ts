@@ -4101,8 +4101,8 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_layout_sizing", {
         nodeId,
-        layoutSizingHorizontal,
-        layoutSizingVertical
+        horizontal: layoutSizingHorizontal,
+        vertical: layoutSizingVertical
       });
       const typedResult = result as { name: string };
 
