@@ -57,7 +57,7 @@ export async function resizeNode(params: CommandParams['resize_node']): Promise<
   (node as SceneNode & { resize: (w: number, h: number) => void }).resize(width, height);
 
   // Provide visual feedback
-  provideVisualFeedback(node, `✅ Resized: ${node.name} to ${width}×${height}`);
+  provideVisualFeedback(node, `✅ Resized: ${node.name} to ${width}×${height}`, { skipSelection: true });
 
   return {
     id: node.id,

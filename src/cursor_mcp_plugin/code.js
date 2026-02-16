@@ -3277,7 +3277,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "resize", `Node does not support resizing: ${nodeId}`);
     node.resize(width, height);
-    provideVisualFeedback(node, `\u2705 Resized: ${node.name} to ${width}\xD7${height}`);
+    provideVisualFeedback(node, `\u2705 Resized: ${node.name} to ${width}\xD7${height}`, { skipSelection: true });
     return {
       id: node.id,
       name: node.name,
