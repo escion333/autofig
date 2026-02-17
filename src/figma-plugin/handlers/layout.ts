@@ -968,3 +968,134 @@ export async function renameMultipleNodes(params: CommandParams['rename_multiple
   };
 }
 
+/**
+ * Apply multiple property changes to a node in one call.
+ * Reduces round-trips for common create → style → layout patterns.
+ */
+export async function updateNode(params: CommandParams['update_node']): Promise<NodeResult> {
+  const { nodeId, patch } = params || {};
+
+  if (!nodeId) throw new Error('Missing nodeId parameter');
+  if (!patch || typeof patch !== 'object') throw new Error('Missing patch parameter');
+
+  const node = await getNodeById(nodeId);
+  const applied: string[] = [];
+
+  // Name
+  if (patch.name !== undefined) {
+    node.name = patch.name;
+    applied.push('name');
+  }
+
+  // Position
+  if (patch.x !== undefined && 'x' in node) {
+    (node as SceneNode & { x: number }).x = patch.x;
+    applied.push('x');
+  }
+  if (patch.y !== undefined && 'y' in node) {
+    (node as SceneNode & { y: number }).y = patch.y;
+    applied.push('y');
+  }
+
+  // Size
+  if ((patch.width !== undefined || patch.height !== undefined) && 'resize' in node) {
+    const w = patch.width ?? (node as SceneNode & { width: number }).width;
+    const h = patch.height ?? (node as SceneNode & { height: number }).height;
+    (node as SceneNode & { resize: (w: number, h: number) => void }).resize(w, h);
+    applied.push('size');
+  }
+
+  // Opacity
+  if (patch.opacity !== undefined && 'opacity' in node) {
+    (node as SceneNode & { opacity: number }).opacity = patch.opacity;
+    applied.push('opacity');
+  }
+
+  // Visibility
+  if (patch.visible !== undefined && 'visible' in node) {
+    (node as SceneNode & { visible: boolean }).visible = patch.visible;
+    applied.push('visible');
+  }
+
+  // Lock
+  if (patch.locked !== undefined && 'locked' in node) {
+    (node as SceneNode & { locked: boolean }).locked = patch.locked;
+    applied.push('locked');
+  }
+
+  // Corner radius
+  if (patch.cornerRadius !== undefined && 'cornerRadius' in node) {
+    (node as SceneNode & { cornerRadius: number }).cornerRadius = patch.cornerRadius;
+    applied.push('cornerRadius');
+  }
+
+  // Fill color shorthand
+  if (patch.fillColor !== undefined && 'fills' in node) {
+    const { r, g, b, a = 1 } = patch.fillColor;
+    (node as GeometryMixin).fills = [{ type: 'SOLID', color: { r, g, b }, opacity: a }];
+    applied.push('fillColor');
+  }
+
+  // Stroke color shorthand
+  if (patch.strokeColor !== undefined && 'strokes' in node) {
+    const { r, g, b, a = 1 } = patch.strokeColor;
+    (node as GeometryMixin).strokes = [{ type: 'SOLID', color: { r, g, b }, opacity: a }];
+    applied.push('strokeColor');
+  }
+
+  // Stroke weight
+  if (patch.strokeWeight !== undefined && 'strokeWeight' in node) {
+    (node as GeometryMixin).strokeWeight = patch.strokeWeight;
+    applied.push('strokeWeight');
+  }
+
+  // Auto-layout properties (only valid on layout-supporting nodes)
+  const layoutTypes = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'];
+  if (layoutTypes.includes(node.type)) {
+    const layoutNode = node as FrameNode;
+
+    if (patch.layoutMode !== undefined) {
+      layoutNode.layoutMode = patch.layoutMode as 'NONE' | 'HORIZONTAL' | 'VERTICAL';
+      applied.push('layoutMode');
+    }
+    if (patch.paddingTop !== undefined) { layoutNode.paddingTop = patch.paddingTop; applied.push('paddingTop'); }
+    if (patch.paddingRight !== undefined) { layoutNode.paddingRight = patch.paddingRight; applied.push('paddingRight'); }
+    if (patch.paddingBottom !== undefined) { layoutNode.paddingBottom = patch.paddingBottom; applied.push('paddingBottom'); }
+    if (patch.paddingLeft !== undefined) { layoutNode.paddingLeft = patch.paddingLeft; applied.push('paddingLeft'); }
+    if (patch.itemSpacing !== undefined) { layoutNode.itemSpacing = patch.itemSpacing; applied.push('itemSpacing'); }
+    if (patch.primaryAxisAlignItems !== undefined) {
+      layoutNode.primaryAxisAlignItems = patch.primaryAxisAlignItems as 'MIN' | 'MAX' | 'CENTER' | 'SPACE_BETWEEN';
+      applied.push('primaryAxisAlignItems');
+    }
+    if (patch.counterAxisAlignItems !== undefined) {
+      layoutNode.counterAxisAlignItems = patch.counterAxisAlignItems as 'MIN' | 'MAX' | 'CENTER' | 'BASELINE';
+      applied.push('counterAxisAlignItems');
+    }
+    if (patch.layoutSizingHorizontal !== undefined) {
+      layoutNode.layoutSizingHorizontal = patch.layoutSizingHorizontal as 'FIXED' | 'HUG' | 'FILL';
+      applied.push('layoutSizingHorizontal');
+    }
+    if (patch.layoutSizingVertical !== undefined) {
+      layoutNode.layoutSizingVertical = patch.layoutSizingVertical as 'FIXED' | 'HUG' | 'FILL';
+      applied.push('layoutSizingVertical');
+    }
+  }
+
+  // Text content
+  if (patch.text !== undefined && node.type === 'TEXT') {
+    const textNode = node as TextNode;
+    await figma.loadFontAsync(textNode.fontName as FontName);
+    textNode.characters = patch.text;
+    applied.push('text');
+  }
+
+  provideVisualFeedback(node, `✅ Updated: ${node.name} [${applied.join(', ')}]`, { skipSelection: true });
+
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    applied,
+  };
+}
+

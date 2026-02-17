@@ -116,7 +116,13 @@ const server = Bun.serve({
     });
   },
   websocket: {
-    open: handleConnection,
+    open(ws: ServerWebSocket<any>) {
+      handleConnection(ws);
+      // Keepalive: ping every 30s to prevent silent TCP connection drops
+      ws.data.pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.ping();
+      }, 30000);
+    },
     message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
         const data = JSON.parse(message as string);
@@ -248,6 +254,7 @@ const server = Bun.serve({
       }
     },
     close(ws: ServerWebSocket<any>) {
+      clearInterval(ws.data.pingInterval);
       // Remove client from their channel
       channels.forEach((clients) => {
         clients.delete(ws);

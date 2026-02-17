@@ -53,6 +53,8 @@ import {
   createVariableCollection,
   createVariable,
   setVariableValue,
+  renameVariable,
+  setVariableDescription,
   createMultipleVariables,
   setMultipleVariableValues,
   deleteVariable,
@@ -114,6 +116,7 @@ import {
   moveToBack,
   moveForward,
   moveBackward,
+  updateNode,
 } from './layout';
 
 // Grid Styles
@@ -270,6 +273,10 @@ export async function handleCommand(
       return await createVariable(params as CommandParams['create_variable']);
     case 'set_variable_value':
       return await setVariableValue(params as CommandParams['set_variable_value']);
+    case 'rename_variable':
+      return await renameVariable(params as CommandParams['rename_variable']);
+    case 'set_variable_description':
+      return await setVariableDescription(params as CommandParams['set_variable_description']);
     case 'create_multiple_variables':
       return await createMultipleVariables(params as CommandParams['create_multiple_variables']);
     case 'set_multiple_variable_values':
@@ -466,6 +473,10 @@ export async function handleCommand(
       return await exportNodeAsImage(params as CommandParams['export_node_as_image']);
     case 'export_multiple_nodes':
       return await exportMultipleNodes(params as CommandParams['export_multiple_nodes']);
+
+    // Patch
+    case 'update_node':
+      return await updateNode(params as CommandParams['update_node']);
 
     default:
       throw new Error(`Unknown command: ${command}`);

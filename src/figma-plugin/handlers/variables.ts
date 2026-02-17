@@ -267,6 +267,57 @@ export async function setVariableValue(
 }
 
 /**
+ * Rename a variable (preserves ID and all existing bindings)
+ */
+export async function renameVariable(
+  params: CommandParams['rename_variable']
+): Promise<{ success: boolean; variableId: string; oldName: string; name: string }> {
+  const { variableId, name } = params;
+
+  if (!variableId) {
+    throw new Error('Missing variableId parameter');
+  }
+  if (!name) {
+    throw new Error('Missing name parameter');
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found: ${variableId}`);
+  }
+
+  const oldName = variable.name;
+  variable.name = name;
+
+  return { success: true, variableId, oldName, name };
+}
+
+/**
+ * Set a variable's description
+ */
+export async function setVariableDescription(
+  params: CommandParams['set_variable_description']
+): Promise<{ success: boolean; variableId: string; description: string }> {
+  const { variableId, description } = params;
+
+  if (!variableId) {
+    throw new Error('Missing variableId parameter');
+  }
+  if (description === undefined) {
+    throw new Error('Missing description parameter');
+  }
+
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found: ${variableId}`);
+  }
+
+  variable.description = description;
+
+  return { success: true, variableId, description };
+}
+
+/**
  * Delete a variable
  */
 export async function deleteVariable(

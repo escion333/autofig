@@ -2046,6 +2046,39 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setVariableValue, "setVariableValue");
+  async function renameVariable(params) {
+    const { variableId, name } = params;
+    if (!variableId) {
+      throw new Error("Missing variableId parameter");
+    }
+    if (!name) {
+      throw new Error("Missing name parameter");
+    }
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    const oldName = variable.name;
+    variable.name = name;
+    return { success: true, variableId, oldName, name };
+  }
+  __name(renameVariable, "renameVariable");
+  async function setVariableDescription(params) {
+    const { variableId, description } = params;
+    if (!variableId) {
+      throw new Error("Missing variableId parameter");
+    }
+    if (description === void 0) {
+      throw new Error("Missing description parameter");
+    }
+    const variable = await figma.variables.getVariableByIdAsync(variableId);
+    if (!variable) {
+      throw new Error(`Variable not found: ${variableId}`);
+    }
+    variable.description = description;
+    return { success: true, variableId, description };
+  }
+  __name(setVariableDescription, "setVariableDescription");
   async function deleteVariable(params) {
     const { variableId } = params;
     if (!variableId) {
@@ -4005,6 +4038,120 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(renameMultipleNodes, "renameMultipleNodes");
+  async function updateNode(params) {
+    var _a, _b;
+    const { nodeId, patch } = params || {};
+    if (!nodeId) throw new Error("Missing nodeId parameter");
+    if (!patch || typeof patch !== "object") throw new Error("Missing patch parameter");
+    const node = await getNodeById(nodeId);
+    const applied = [];
+    if (patch.name !== void 0) {
+      node.name = patch.name;
+      applied.push("name");
+    }
+    if (patch.x !== void 0 && "x" in node) {
+      node.x = patch.x;
+      applied.push("x");
+    }
+    if (patch.y !== void 0 && "y" in node) {
+      node.y = patch.y;
+      applied.push("y");
+    }
+    if ((patch.width !== void 0 || patch.height !== void 0) && "resize" in node) {
+      const w = (_a = patch.width) != null ? _a : node.width;
+      const h = (_b = patch.height) != null ? _b : node.height;
+      node.resize(w, h);
+      applied.push("size");
+    }
+    if (patch.opacity !== void 0 && "opacity" in node) {
+      node.opacity = patch.opacity;
+      applied.push("opacity");
+    }
+    if (patch.visible !== void 0 && "visible" in node) {
+      node.visible = patch.visible;
+      applied.push("visible");
+    }
+    if (patch.locked !== void 0 && "locked" in node) {
+      node.locked = patch.locked;
+      applied.push("locked");
+    }
+    if (patch.cornerRadius !== void 0 && "cornerRadius" in node) {
+      node.cornerRadius = patch.cornerRadius;
+      applied.push("cornerRadius");
+    }
+    if (patch.fillColor !== void 0 && "fills" in node) {
+      const { r, g, b, a = 1 } = patch.fillColor;
+      node.fills = [{ type: "SOLID", color: { r, g, b }, opacity: a }];
+      applied.push("fillColor");
+    }
+    if (patch.strokeColor !== void 0 && "strokes" in node) {
+      const { r, g, b, a = 1 } = patch.strokeColor;
+      node.strokes = [{ type: "SOLID", color: { r, g, b }, opacity: a }];
+      applied.push("strokeColor");
+    }
+    if (patch.strokeWeight !== void 0 && "strokeWeight" in node) {
+      node.strokeWeight = patch.strokeWeight;
+      applied.push("strokeWeight");
+    }
+    const layoutTypes = ["FRAME", "COMPONENT", "COMPONENT_SET", "INSTANCE"];
+    if (layoutTypes.includes(node.type)) {
+      const layoutNode = node;
+      if (patch.layoutMode !== void 0) {
+        layoutNode.layoutMode = patch.layoutMode;
+        applied.push("layoutMode");
+      }
+      if (patch.paddingTop !== void 0) {
+        layoutNode.paddingTop = patch.paddingTop;
+        applied.push("paddingTop");
+      }
+      if (patch.paddingRight !== void 0) {
+        layoutNode.paddingRight = patch.paddingRight;
+        applied.push("paddingRight");
+      }
+      if (patch.paddingBottom !== void 0) {
+        layoutNode.paddingBottom = patch.paddingBottom;
+        applied.push("paddingBottom");
+      }
+      if (patch.paddingLeft !== void 0) {
+        layoutNode.paddingLeft = patch.paddingLeft;
+        applied.push("paddingLeft");
+      }
+      if (patch.itemSpacing !== void 0) {
+        layoutNode.itemSpacing = patch.itemSpacing;
+        applied.push("itemSpacing");
+      }
+      if (patch.primaryAxisAlignItems !== void 0) {
+        layoutNode.primaryAxisAlignItems = patch.primaryAxisAlignItems;
+        applied.push("primaryAxisAlignItems");
+      }
+      if (patch.counterAxisAlignItems !== void 0) {
+        layoutNode.counterAxisAlignItems = patch.counterAxisAlignItems;
+        applied.push("counterAxisAlignItems");
+      }
+      if (patch.layoutSizingHorizontal !== void 0) {
+        layoutNode.layoutSizingHorizontal = patch.layoutSizingHorizontal;
+        applied.push("layoutSizingHorizontal");
+      }
+      if (patch.layoutSizingVertical !== void 0) {
+        layoutNode.layoutSizingVertical = patch.layoutSizingVertical;
+        applied.push("layoutSizingVertical");
+      }
+    }
+    if (patch.text !== void 0 && node.type === "TEXT") {
+      const textNode = node;
+      await figma.loadFontAsync(textNode.fontName);
+      textNode.characters = patch.text;
+      applied.push("text");
+    }
+    provideVisualFeedback(node, `\u2705 Updated: ${node.name} [${applied.join(", ")}]`, { skipSelection: true });
+    return {
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      applied
+    };
+  }
+  __name(updateNode, "updateNode");
 
   // src/figma-plugin/handlers/grid-styles.ts
   function layoutGridInputToFigma(input) {
@@ -6000,6 +6147,10 @@ The node may have been deleted or the ID is invalid.
         return await createVariable(params);
       case "set_variable_value":
         return await setVariableValue(params);
+      case "rename_variable":
+        return await renameVariable(params);
+      case "set_variable_description":
+        return await setVariableDescription(params);
       case "create_multiple_variables":
         return await createMultipleVariables(params);
       case "set_multiple_variable_values":
@@ -6182,6 +6333,9 @@ The node may have been deleted or the ID is invalid.
         return await exportNodeAsImage(params);
       case "export_multiple_nodes":
         return await exportMultipleNodes(params);
+      // Patch
+      case "update_node":
+        return await updateNode(params);
       default:
         throw new Error(`Unknown command: ${command}`);
     }

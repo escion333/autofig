@@ -57,6 +57,8 @@ export type FigmaCommand =
   | 'create_variable_collection'
   | 'create_variable'
   | 'set_variable_value'
+  | 'set_variable_description'
+  | 'rename_variable'
   | 'create_multiple_variables'
   | 'set_multiple_variable_values'
   | 'delete_variable'
@@ -158,6 +160,8 @@ export type FigmaCommand =
   // Export
   | 'export_node_as_image'
   | 'export_multiple_nodes'
+  // Patch (multi-property update in one call)
+  | 'update_node'
   // WebSocket Channel Management (MCP server only)
   | 'join';
 
@@ -207,6 +211,14 @@ export interface CommandParams {
     variableId: string;
     modeId: string;
     value: VariableValueInput;
+  };
+  set_variable_description: {
+    variableId: string;
+    description: string;
+  };
+  rename_variable: {
+    variableId: string;
+    name: string;
   };
   create_multiple_variables: {
     collectionId: string;
@@ -798,6 +810,39 @@ export interface CommandParams {
   // Fill Utilities
   remove_raw_white_fills: {
     nodeId?: string;
+  };
+
+  // Patch (multi-property update in one call)
+  update_node: {
+    nodeId: string;
+    patch: {
+      name?: string;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      opacity?: number;
+      visible?: boolean;
+      locked?: boolean;
+      cornerRadius?: number;
+      // Auto-layout
+      layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL';
+      paddingTop?: number;
+      paddingRight?: number;
+      paddingBottom?: number;
+      paddingLeft?: number;
+      itemSpacing?: number;
+      primaryAxisAlignItems?: 'MIN' | 'MAX' | 'CENTER' | 'SPACE_BETWEEN';
+      counterAxisAlignItems?: 'MIN' | 'MAX' | 'CENTER' | 'BASELINE';
+      layoutSizingHorizontal?: 'FIXED' | 'HUG' | 'FILL';
+      layoutSizingVertical?: 'FIXED' | 'HUG' | 'FILL';
+      // Fill/stroke shorthands
+      fillColor?: RGBA;
+      strokeColor?: RGBA;
+      strokeWeight?: number;
+      // Text
+      text?: string;
+    };
   };
 
   // WebSocket Channel Management (MCP server only)

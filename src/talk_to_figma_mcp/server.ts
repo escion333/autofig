@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { FigmaCommand } from "../shared/types";
 import { rgbaToHex } from "../shared/utils/color.js";
 import { filterFigmaNode, type RawFigmaNode } from "../shared/utils/node-filter.js";
+import { leanSchema, LEAN_MODE } from "./lean-schema.js";
 
 // Helper: MCP params arrive as JSON strings for arrays — preprocess to parse them
 const zStringArray = z.preprocess(
@@ -145,17 +146,184 @@ const pendingRequests = new Map<string, {
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
+// Track an in-progress join to prevent concurrent duplicate joins
+let joiningChannel: Promise<void> | null = null;
 
-// Per-channel serial queues — ensures one command in-flight at a time per channel
-const channelQueues = new Map<string, Promise<void>>();
+// ============================================================================
+// Lock-based concurrency model (replaces per-channel serial queue)
+//
+// Instead of serializing every command, we allow:
+//   - Pure reads: up to MAX_READ_INFLIGHT concurrent (no lock)
+//   - Side-effect reads (exports): serialized globally (MAX_EXPORT_INFLIGHT)
+//   - Doc-wide writes: serialized with a global doc lock
+//   - Per-node writes: serialized per nodeId, concurrent across different nodes
+// ============================================================================
 
-function enqueueChannelTask<T>(channel: string, task: () => Promise<T>): Promise<T> {
-  const prev = channelQueues.get(channel) ?? Promise.resolve();
-  // Chain task; run regardless of whether prev succeeded or failed
-  const next = prev.then(task, task);
-  // Store a void/error-suppressed tail so the chain doesn't accumulate rejections
-  channelQueues.set(channel, next.then(() => {}, () => {}));
-  return next;
+const MAX_READ_INFLIGHT = 4;
+const MAX_QUEUE_WAIT_MS = 30000;
+
+// Pure read commands — no side effects, safe to run fully concurrent
+const READ_ONLY_COMMANDS = new Set<string>([
+  'get_document_info', 'get_selection', 'read_my_design', 'get_node_info',
+  'get_nodes_info', 'get_local_variables', 'get_local_variable_collections',
+  'get_local_components', 'get_text_styles', 'get_paint_styles',
+  'get_effect_styles', 'get_grid_styles', 'get_pages', 'get_styles',
+  'scan_nodes_by_types', 'scan_text_nodes', 'get_annotations',
+  'get_component_properties', 'get_bound_variables', 'get_reactions',
+  'get_instance_overrides', 'get_constraints', 'get_available_fonts',
+  'get_plugin_data', 'get_all_plugin_data',
+]);
+
+// Export commands — side-effect reads (encode output), bounded at 1 to avoid OOM
+const SIDE_EFFECT_READS = new Set<string>([
+  'export_node_as_image', 'export_multiple_nodes',
+]);
+
+// Doc-wide writes — change global document state, must fully serialize
+const DOC_WIDE_WRITES = new Set<string>([
+  'create_variable_collection', 'create_page', 'delete_page', 'rename_page',
+  'create_component', 'create_component_set',
+]);
+
+// Semaphore — caps inflight count
+class Semaphore {
+  private inflight = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.inflight < this.limit) {
+      this.inflight++;
+      return;
+    }
+    return new Promise<void>(resolve => this.queue.push(() => { this.inflight++; resolve(); }));
+  }
+
+  release(): void {
+    this.inflight--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+}
+
+// Counted mutex — tracks pending+running count so we can safely GC when idle
+class Mutex {
+  private inflight = 0;
+  private queue: Array<() => void> = [];
+  pendingCount = 0; // tasks waiting OR running
+
+  async lock(): Promise<void> {
+    this.pendingCount++;
+    if (this.inflight === 0) {
+      this.inflight++;
+      return;
+    }
+    return new Promise<void>(resolve => this.queue.push(() => { this.inflight++; resolve(); }));
+  }
+
+  release(): void {
+    this.inflight--;
+    this.pendingCount--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+
+  get isIdle(): boolean {
+    return this.pendingCount === 0;
+  }
+}
+
+const readSemaphore = new Semaphore(MAX_READ_INFLIGHT);
+const exportMutex = new Mutex();
+const docWriteMutex = new Mutex();
+const nodeWriteLocks = new Map<string, Mutex>();
+
+function getNodeWriteLock(nodeId: string): Mutex {
+  let lock = nodeWriteLocks.get(nodeId);
+  if (!lock) {
+    lock = new Mutex();
+    nodeWriteLocks.set(nodeId, lock);
+  }
+  return lock;
+}
+
+/**
+ * Dispatch a command with the appropriate concurrency strategy.
+ * Replaces the old per-channel serial queue.
+ */
+async function enqueueChannelTask<T>(
+  _channel: string,
+  task: () => Promise<T>,
+  command: FigmaCommand,
+  params?: unknown
+): Promise<T> {
+  const enqueueTime = Date.now();
+
+  const checkTimeout = () => {
+    if (Date.now() - enqueueTime > MAX_QUEUE_WAIT_MS) {
+      throw new Error('Command dropped — lock wait exceeded 30s. A previous command may have stalled.');
+    }
+  };
+
+  // Pure reads: bounded concurrency, no locking
+  if (READ_ONLY_COMMANDS.has(command as string)) {
+    await readSemaphore.acquire();
+    checkTimeout();
+    try {
+      return await task();
+    } finally {
+      readSemaphore.release();
+    }
+  }
+
+  // Side-effect reads (exports): serialize with export mutex
+  if (SIDE_EFFECT_READS.has(command as string)) {
+    await exportMutex.lock();
+    checkTimeout();
+    try {
+      return await task();
+    } finally {
+      exportMutex.release();
+    }
+  }
+
+  // Doc-wide writes: serialize with global doc lock
+  if (DOC_WIDE_WRITES.has(command as string)) {
+    await docWriteMutex.lock();
+    checkTimeout();
+    try {
+      return await task();
+    } finally {
+      docWriteMutex.release();
+    }
+  }
+
+  // Per-node writes: serialize per nodeId so different nodes can run concurrently
+  const nodeId = (params as Record<string, unknown>)?.nodeId as string | undefined;
+  if (nodeId) {
+    const lock = getNodeWriteLock(nodeId);
+    await lock.lock();
+    checkTimeout();
+    try {
+      return await task();
+    } finally {
+      lock.release();
+      // GC: safe to remove from map only when no other task is waiting/running on this lock
+      if (lock.isIdle && nodeWriteLocks.get(nodeId) === lock) {
+        nodeWriteLocks.delete(nodeId);
+      }
+    }
+  }
+
+  // Fallback: doc-wide lock for commands with no nodeId (e.g. batch ops)
+  await docWriteMutex.lock();
+  checkTimeout();
+  try {
+    return await task();
+  } finally {
+    docWriteMutex.release();
+  }
 }
 
 // Check for channel from environment variable
@@ -177,6 +345,27 @@ const server = new McpServer({
   name: "AutoFig",
   version: "1.0.0",
 });
+
+// ============================================================================
+// Lean Schema Registration
+// ============================================================================
+// Wrapper around server.tool() that strips .describe() metadata from schemas
+// when LEAN_MODE is enabled (default). This saves ~8-12K tokens per tool listing
+// without changing any validation logic.
+let _toolCount = 0;
+let _toolSchemaBytes = 0;
+
+function registerTool(
+  name: string,
+  description: string,
+  shape: Record<string, z.ZodTypeAny>,
+  handler: (args: any) => Promise<any>
+) {
+  const effectiveShape = leanSchema(shape);
+  _toolCount++;
+  _toolSchemaBytes += JSON.stringify(effectiveShape).length;
+  server.tool(name, description, effectiveShape, handler);
+}
 
 // Add command line argument parsing
 const args = process.argv.slice(2);
@@ -411,7 +600,7 @@ async function joinChannelInternal(channelName: string): Promise<void> {
 // ============================================================================
 
 // Join Channel Tool - MUST be first to enable all other tools
-server.tool(
+registerTool(
   "join_channel",
   "Join a WebSocket channel (auto-joins 'autofig' by default).",
   {
@@ -455,7 +644,7 @@ server.tool(
 );
 
 // Document Info Tool
-server.tool(
+registerTool(
   "get_document_info",
   "Get document name, ID, and current page.",
   {},
@@ -470,7 +659,7 @@ server.tool(
 );
 
 // Selection Tool
-server.tool(
+registerTool(
   "get_selection",
   "Get current selection node IDs, names, and types.",
   {},
@@ -485,7 +674,7 @@ server.tool(
 );
 
 // Read My Design Tool
-server.tool(
+registerTool(
   "read_my_design",
   "Get detailed properties of the current selection.",
   {},
@@ -500,7 +689,7 @@ server.tool(
 );
 
 // Node Info Tool
-server.tool(
+registerTool(
   "get_node_info",
   "Get detailed properties of a node by ID.",
   {
@@ -524,7 +713,7 @@ server.tool(
 );
 
 // Nodes Info Tool
-server.tool(
+registerTool(
   "get_nodes_info",
   "Get detailed properties of multiple nodes by IDs.",
   {
@@ -554,7 +743,7 @@ server.tool(
 
 
 // Create Rectangle Tool
-server.tool(
+registerTool(
   "create_rectangle",
   "Create a rectangle with position, size, and optional parent.",
   {
@@ -593,7 +782,7 @@ server.tool(
 );
 
 // Create Frame Tool
-server.tool(
+registerTool(
   "create_frame",
   "Create a frame/container with optional auto-layout.",
   {
@@ -688,7 +877,7 @@ server.tool(
 );
 
 // Create Text Tool
-server.tool(
+registerTool(
   "create_text",
   "Create a text node with font, size, and color options.",
   {
@@ -748,7 +937,7 @@ server.tool(
 );
 
 // Create Ellipse Tool
-server.tool(
+registerTool(
   "create_ellipse",
   "Create an ellipse/circle with optional fill and stroke.",
   {
@@ -794,7 +983,7 @@ server.tool(
 );
 
 // Set Fill Color Tool
-server.tool(
+registerTool(
   "set_fill_color",
   "Set fill color on a node (RGBA 0-1).",
   {
@@ -827,7 +1016,7 @@ server.tool(
 );
 
 // Set Stroke Color Tool
-server.tool(
+registerTool(
   "set_stroke_color",
   "Set stroke color and weight on a node.",
   {
@@ -862,7 +1051,7 @@ server.tool(
 );
 
 // Move Node Tool
-server.tool(
+registerTool(
   "move_node",
   "Move a node to new (x, y) position.",
   {
@@ -889,7 +1078,7 @@ server.tool(
 );
 
 // Reparent Node Tool
-server.tool(
+registerTool(
   "reparent_node",
   "Move a node into a different parent frame or group.",
   {
@@ -916,7 +1105,7 @@ server.tool(
 );
 
 // Clone Node Tool
-server.tool(
+registerTool(
   "clone_node",
   "Duplicate a node, optionally at new position.",
   {
@@ -947,7 +1136,7 @@ server.tool(
 // ============================================================================
 
 // Reorder Node Tool
-server.tool(
+registerTool(
   "reorder_node",
   "Move a node to a specific z-order index.",
   {
@@ -973,7 +1162,7 @@ server.tool(
 );
 
 // Move to Front Tool
-server.tool(
+registerTool(
   "move_to_front",
   "Move a node to the front of its parent stack.",
   {
@@ -998,7 +1187,7 @@ server.tool(
 );
 
 // Move to Back Tool
-server.tool(
+registerTool(
   "move_to_back",
   "Move a node to the back of its parent stack.",
   {
@@ -1023,7 +1212,7 @@ server.tool(
 );
 
 // Move Forward Tool
-server.tool(
+registerTool(
   "move_forward",
   "Move a node one level forward in z-order.",
   {
@@ -1048,7 +1237,7 @@ server.tool(
 );
 
 // Move Backward Tool
-server.tool(
+registerTool(
   "move_backward",
   "Move a node one level backward in z-order.",
   {
@@ -1073,7 +1262,7 @@ server.tool(
 );
 
 // Resize Node Tool
-server.tool(
+registerTool(
   "resize_node",
   "Resize a node to new width and height.",
   {
@@ -1104,7 +1293,7 @@ server.tool(
 );
 
 // Delete Node Tool
-server.tool(
+registerTool(
   "delete_node",
   "Delete a single node permanently.",
   {
@@ -1128,7 +1317,7 @@ server.tool(
 );
 
 // Delete Multiple Nodes Tool
-server.tool(
+registerTool(
   "delete_multiple_nodes",
   "Delete multiple nodes in one operation.",
   {
@@ -1145,7 +1334,7 @@ server.tool(
 );
 
 // Export Node as Image Tool
-server.tool(
+registerTool(
   "export_node_as_image",
   "Export a node as PNG, JPG, SVG, or PDF.",
   {
@@ -1181,7 +1370,7 @@ server.tool(
 );
 
 // Export Multiple Nodes Tool
-server.tool(
+registerTool(
   "export_multiple_nodes",
   "Batch export nodes as images.",
   {
@@ -1220,8 +1409,50 @@ server.tool(
   }
 );
 
+// Update Node Tool (patch — apply multiple properties in one call)
+registerTool(
+  "update_node",
+  "Apply multiple property changes to a node in one call. Use this instead of chaining set_fill_color + set_padding + resize_node etc.",
+  {
+    nodeId: z.string(),
+    patch: z.object({
+      name: z.string().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      width: z.number().positive().optional(),
+      height: z.number().positive().optional(),
+      opacity: z.number().min(0).max(1).optional(),
+      visible: z.boolean().optional(),
+      locked: z.boolean().optional(),
+      cornerRadius: z.number().min(0).optional(),
+      layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional(),
+      paddingTop: z.number().min(0).optional(),
+      paddingRight: z.number().min(0).optional(),
+      paddingBottom: z.number().min(0).optional(),
+      paddingLeft: z.number().min(0).optional(),
+      itemSpacing: z.number().min(0).optional(),
+      primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional(),
+      counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional(),
+      layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional(),
+      layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional(),
+      fillColor: rgbaSchema.optional(),
+      strokeColor: rgbaSchema.optional(),
+      strokeWeight: z.number().positive().optional(),
+      text: z.string().optional(),
+    }),
+  },
+  async ({ nodeId, patch }: any) => {
+    try {
+      const result = await sendCommandToFigma("update_node", { nodeId, patch });
+      return formatJsonResponse(result);
+    } catch (error) {
+      return formatErrorResponse("updating node", error);
+    }
+  }
+);
+
 // Set Text Content Tool
-server.tool(
+registerTool(
   "set_text_content",
   "Update text content of a text node.",
   {
@@ -1254,7 +1485,7 @@ server.tool(
 // =============================================================================
 
 // Get Local Variable Collections Tool
-server.tool(
+registerTool(
   "get_local_variable_collections",
   "Get all variable collections from the document.",
   {},
@@ -1269,7 +1500,7 @@ server.tool(
 );
 
 // Get Local Variables Tool
-server.tool(
+registerTool(
   "get_local_variables",
   "Get variables, optionally filtered by collection.",
   {
@@ -1286,7 +1517,7 @@ server.tool(
 );
 
 // Create Variable Collection Tool
-server.tool(
+registerTool(
   "create_variable_collection",
   "Create a variable collection with optional modes.",
   {
@@ -1304,7 +1535,7 @@ server.tool(
 );
 
 // Create Variable Tool
-server.tool(
+registerTool(
   "create_variable",
   "Create a variable (COLOR/FLOAT/STRING/BOOLEAN).",
   {
@@ -1329,7 +1560,7 @@ server.tool(
 );
 
 // Set Variable Value Tool
-server.tool(
+registerTool(
   "set_variable_value",
   "Set a variable value for a specific mode.",
   {
@@ -1353,8 +1584,44 @@ server.tool(
   }
 );
 
+// Set Variable Description Tool
+registerTool(
+  "set_variable_description",
+  "Set the description text on an existing variable. Use this to document scope, intent, or usage constraints.",
+  {
+    variableId: z.string().describe("The ID of the variable to update (e.g., 'VariableID:12:58')"),
+    description: z.string().describe("The description text to set on the variable"),
+  },
+  async ({ variableId, description }: { variableId: string; description: string }) => {
+    try {
+      const result = await sendCommandToFigma("set_variable_description", { variableId, description });
+      return formatJsonResponse(result);
+    } catch (error) {
+      return formatErrorResponse("setting variable description", error);
+    }
+  }
+);
+
+// Rename Variable Tool
+registerTool(
+  "rename_variable",
+  "Rename an existing variable in-place, preserving its ID and all existing bindings. Use folder/token-name syntax for Figma grouping (e.g. 'Semantic/Danger/danger-bg').",
+  {
+    variableId: z.string().describe("The ID of the variable to rename (e.g., 'VariableID:12:78')"),
+    name: z.string().describe("The new name for the variable (e.g., 'Semantic/Danger/danger-500')"),
+  },
+  async ({ variableId, name }: { variableId: string; name: string }) => {
+    try {
+      const result = await sendCommandToFigma("rename_variable", { variableId, name });
+      return formatJsonResponse(result);
+    } catch (error) {
+      return formatErrorResponse("renaming variable", error);
+    }
+  }
+);
+
 // Create Multiple Variables Tool (batch)
-server.tool(
+registerTool(
   "create_multiple_variables",
   "Batch create variables in a collection.",
   {
@@ -1381,7 +1648,7 @@ server.tool(
 );
 
 // Set Multiple Variable Values Tool (batch)
-server.tool(
+registerTool(
   "set_multiple_variable_values",
   "Batch set variable values across modes.",
   {
@@ -1411,7 +1678,7 @@ server.tool(
 );
 
 // Delete Variable Tool
-server.tool(
+registerTool(
   "delete_variable",
   "Delete a variable from its collection.",
   {
@@ -1428,7 +1695,7 @@ server.tool(
 );
 
 // Get Bound Variables Tool
-server.tool(
+registerTool(
   "get_bound_variables",
   "Get all variable bindings on a node.",
   {
@@ -1445,7 +1712,7 @@ server.tool(
 );
 
 // Bind Variable Tool
-server.tool(
+registerTool(
   "bind_variable",
   "Bind a variable to a node property.",
   {
@@ -1470,7 +1737,7 @@ server.tool(
 );
 
 // Unbind Variable Tool
-server.tool(
+registerTool(
   "unbind_variable",
   "Remove a variable binding from a node property.",
   {
@@ -1494,7 +1761,7 @@ server.tool(
 );
 
 // Get Styles Tool
-server.tool(
+registerTool(
   "get_styles",
   "Get all local styles (text, paint, effect, grid).",
   {},
@@ -1509,7 +1776,7 @@ server.tool(
 );
 
 // Get Local Components Tool
-server.tool(
+registerTool(
   "get_local_components",
   "Get all local components and component sets.",
   {},
@@ -1528,7 +1795,7 @@ server.tool(
 // =============================================================================
 
 // Create Component Tool
-server.tool(
+registerTool(
   "create_component",
   "Convert a node into a reusable component.",
   {
@@ -1546,7 +1813,7 @@ server.tool(
 );
 
 // Create Component Set Tool
-server.tool(
+registerTool(
   "create_component_set",
   "Combine components into a variant set.",
   {
@@ -1564,7 +1831,7 @@ server.tool(
 );
 
 // Get Component Properties Tool
-server.tool(
+registerTool(
   "get_component_properties",
   "Get properties on a component or component set.",
   {
@@ -1581,7 +1848,7 @@ server.tool(
 );
 
 // Add Component Property Tool
-server.tool(
+registerTool(
   "add_component_property",
   "Add a property (BOOLEAN/TEXT/INSTANCE_SWAP/VARIANT).",
   {
@@ -1620,7 +1887,7 @@ server.tool(
 );
 
 // Set Component Property Value Tool
-server.tool(
+registerTool(
   "set_component_property_value",
   "Set a property value on a component instance.",
   {
@@ -1639,7 +1906,7 @@ server.tool(
 );
 
 // Set Component Property References Tool
-server.tool(
+registerTool(
   "set_component_property_references",
   "Wire a nested instance to component properties.",
   {
@@ -1657,7 +1924,7 @@ server.tool(
 );
 
 // Get Annotations Tool
-server.tool(
+registerTool(
   "get_annotations",
   "Get dev mode annotations from a node.",
   {
@@ -1678,7 +1945,7 @@ server.tool(
 );
 
 // Set Annotation Tool
-server.tool(
+registerTool(
   "set_annotation",
   "Create or update an annotation on a node.",
   {
@@ -1718,7 +1985,7 @@ interface SetMultipleAnnotationsParams {
 }
 
 // Set Multiple Annotations Tool
-server.tool(
+registerTool(
   "set_multiple_annotations",
   "Batch create/update annotations.",
   {
@@ -1825,7 +2092,7 @@ server.tool(
 );
 
 // Create Component Instance Tool
-server.tool(
+registerTool(
   "create_component_instance",
   "Create an instance of a component by ID or key.",
   {
@@ -1860,7 +2127,7 @@ server.tool(
 );
 
 // Create Multiple Component Instances Tool (batch)
-server.tool(
+registerTool(
   "create_multiple_component_instances",
   "Batch create component instances with progress.",
   {
@@ -1900,7 +2167,7 @@ server.tool(
 );
 
 // Set Multiple Component Property References Tool (batch)
-server.tool(
+registerTool(
   "set_multiple_component_property_references",
   "Batch wire instances to component properties.",
   {
@@ -1936,7 +2203,7 @@ server.tool(
 );
 
 // Copy Instance Overrides Tool
-server.tool(
+registerTool(
   "get_instance_overrides",
   "Capture overrides from a component instance.",
   {
@@ -1966,7 +2233,7 @@ server.tool(
 );
 
 // Set Instance Overrides Tool
-server.tool(
+registerTool(
   "set_instance_overrides",
   "Apply captured overrides to target instances.",
   {
@@ -2009,7 +2276,7 @@ server.tool(
 
 
 // Set Corner Radius Tool
-server.tool(
+registerTool(
   "set_corner_radius",
   "Set corner radius, optionally per-corner.",
   {
@@ -2046,7 +2313,7 @@ server.tool(
 );
 
 // Set Opacity Tool
-server.tool(
+registerTool(
   "set_opacity",
   "Set node opacity (0=transparent, 1=opaque).",
   {
@@ -2075,7 +2342,7 @@ server.tool(
 );
 
 // Remove Raw White Fills Tool
-server.tool(
+registerTool(
   "remove_raw_white_fills",
   "Recursively scan a node (or the whole current page) and remove all raw unbound white (#FFFFFF) solid fills. Variable-bound fills are left untouched.",
   {
@@ -2100,7 +2367,7 @@ server.tool(
 );
 
 // Group Nodes Tool
-server.tool(
+registerTool(
   "group_nodes",
   "Group multiple nodes into a single group.",
   {
@@ -2129,7 +2396,7 @@ server.tool(
 );
 
 // Ungroup Node Tool
-server.tool(
+registerTool(
   "ungroup_node",
   "Dissolve a group, moving children to parent.",
   {
@@ -2160,7 +2427,7 @@ server.tool(
 // ============================================================================
 
 // Get Available Fonts Tool
-server.tool(
+registerTool(
   "get_available_fonts",
   "List available fonts, optionally filtered by name.",
   {
@@ -2187,7 +2454,7 @@ server.tool(
 );
 
 // Load Font Tool
-server.tool(
+registerTool(
   "load_font",
   "Load a font family+style for text operations.",
   {
@@ -2216,7 +2483,7 @@ server.tool(
 );
 
 // Get Text Styles Tool
-server.tool(
+registerTool(
   "get_text_styles",
   "Get all local text/typography styles.",
   {},
@@ -2243,7 +2510,7 @@ server.tool(
 );
 
 // Create Text Style Tool
-server.tool(
+registerTool(
   "create_text_style",
   "Create a reusable text style with font properties.",
   {
@@ -2286,7 +2553,7 @@ server.tool(
 );
 
 // Apply Text Style Tool
-server.tool(
+registerTool(
   "apply_text_style",
   "Apply a text style to a text node by ID or name.",
   {
@@ -2317,7 +2584,7 @@ server.tool(
 );
 
 // Set Text Properties Tool
-server.tool(
+registerTool(
   "set_text_properties",
   "Set typography properties directly on a text node.",
   {
@@ -2368,7 +2635,7 @@ server.tool(
 // ============================================================================
 
 // Get Paint Styles Tool
-server.tool(
+registerTool(
   "get_paint_styles",
   "Get all local paint/color styles.",
   {},
@@ -2401,7 +2668,7 @@ server.tool(
 );
 
 // Create Paint Style Tool
-server.tool(
+registerTool(
   "create_paint_style",
   "Create a reusable solid color style.",
   {
@@ -2436,7 +2703,7 @@ server.tool(
 );
 
 // Update Paint Style Tool
-server.tool(
+registerTool(
   "update_paint_style",
   "Update a paint style name or color.",
   {
@@ -2477,7 +2744,7 @@ server.tool(
 );
 
 // Apply Paint Style Tool
-server.tool(
+registerTool(
   "apply_paint_style",
   "Apply a paint style to fills or strokes.",
   {
@@ -2510,7 +2777,7 @@ server.tool(
 );
 
 // Delete Paint Style Tool
-server.tool(
+registerTool(
   "delete_paint_style",
   "Delete a paint style from the document.",
   {
@@ -2537,7 +2804,7 @@ server.tool(
 );
 
 // Set Gradient Fill Tool
-server.tool(
+registerTool(
   "set_gradient_fill",
   "Apply a gradient fill with color stops.",
   {
@@ -2577,7 +2844,7 @@ server.tool(
 // ============================================================================
 
 // Get Effect Styles Tool
-server.tool(
+registerTool(
   "get_effect_styles",
   "Get all local effect styles (shadows, blurs).",
   {},
@@ -2612,7 +2879,7 @@ server.tool(
 );
 
 // Create Effect Style Tool
-server.tool(
+registerTool(
   "create_effect_style",
   "Create a reusable effect style (shadows/blurs).",
   {
@@ -2649,7 +2916,7 @@ server.tool(
 );
 
 // Apply Effect Style Tool
-server.tool(
+registerTool(
   "apply_effect_style",
   "Apply an effect style to a node by ID or name.",
   {
@@ -2680,7 +2947,7 @@ server.tool(
 );
 
 // Delete Effect Style Tool
-server.tool(
+registerTool(
   "delete_effect_style",
   "Delete an effect style from the document.",
   {
@@ -2707,7 +2974,7 @@ server.tool(
 );
 
 // Set Effects Tool
-server.tool(
+registerTool(
   "set_effects",
   "Replace all effects on a node with a new set.",
   {
@@ -2744,7 +3011,7 @@ server.tool(
 );
 
 // Add Drop Shadow Tool
-server.tool(
+registerTool(
   "add_drop_shadow",
   "Add a drop shadow without removing existing effects.",
   {
@@ -2783,7 +3050,7 @@ server.tool(
 );
 
 // Add Inner Shadow Tool
-server.tool(
+registerTool(
   "add_inner_shadow",
   "Add an inner shadow without removing existing effects.",
   {
@@ -2822,7 +3089,7 @@ server.tool(
 );
 
 // Add Layer Blur Tool
-server.tool(
+registerTool(
   "add_layer_blur",
   "Add a layer blur effect to a node.",
   {
@@ -2853,7 +3120,7 @@ server.tool(
 );
 
 // Add Background Blur Tool
-server.tool(
+registerTool(
   "add_background_blur",
   "Add a background blur (frosted glass) to a node.",
   {
@@ -2888,7 +3155,7 @@ server.tool(
 // ============================================================================
 
 // Get Constraints Tool
-server.tool(
+registerTool(
   "get_constraints",
   "Get responsive layout constraints of a node.",
   {
@@ -2913,7 +3180,7 @@ server.tool(
 );
 
 // Set Constraints Tool
-server.tool(
+registerTool(
   "set_constraints",
   "Set responsive constraints (MIN/CENTER/MAX/STRETCH/SCALE).",
   {
@@ -2944,7 +3211,7 @@ server.tool(
 );
 
 // Set Multiple Locked Tool (batch)
-server.tool(
+registerTool(
   "set_multiple_locked",
   "Batch set locked (true/false) on multiple nodes.",
   {
@@ -2980,7 +3247,7 @@ server.tool(
 );
 
 // Set Multiple Constraints Tool (batch)
-server.tool(
+registerTool(
   "set_multiple_constraints",
   "Batch set responsive constraints (MIN/CENTER/MAX/STRETCH/SCALE) on multiple nodes.",
   {
@@ -3021,7 +3288,7 @@ server.tool(
 // ============================================================================
 
 // Get Grid Styles Tool
-server.tool(
+registerTool(
   "get_grid_styles",
   "Get all local grid styles from the document.",
   {},
@@ -3054,7 +3321,7 @@ server.tool(
 );
 
 // Create Grid Style Tool
-server.tool(
+registerTool(
   "create_grid_style",
   "Create a reusable grid style (columns/rows/grid).",
   {
@@ -3092,7 +3359,7 @@ server.tool(
 );
 
 // Apply Grid Style Tool
-server.tool(
+registerTool(
   "apply_grid_style",
   "Apply a grid style to a frame.",
   {
@@ -3123,7 +3390,7 @@ server.tool(
 );
 
 // Delete Grid Style Tool
-server.tool(
+registerTool(
   "delete_grid_style",
   "Delete a grid style from the document.",
   {
@@ -3148,7 +3415,7 @@ server.tool(
 );
 
 // Set Layout Grids Tool
-server.tool(
+registerTool(
   "set_layout_grids",
   "Set layout grids directly on a frame.",
   {
@@ -3298,7 +3565,7 @@ server.prompt(
 );
 
 // Text Node Scanning Tool
-server.tool(
+registerTool(
   "scan_text_nodes",
   "Recursively find all text nodes in a subtree.",
   {
@@ -3369,7 +3636,7 @@ server.tool(
 );
 
 // Node Type Scanning Tool
-server.tool(
+registerTool(
   "scan_nodes_by_types",
   "Find descendant nodes matching specific types.",
   {
@@ -3445,7 +3712,7 @@ server.tool(
 );
 
 // Bind Multiple Variables Tool (batch)
-server.tool(
+registerTool(
   "bind_multiple_variables",
   "Batch bind variables to node properties.",
   {
@@ -3482,7 +3749,7 @@ server.tool(
 );
 
 // Rename Node Tool
-server.tool(
+registerTool(
   "rename_node",
   "Rename a single node.",
   {
@@ -3511,7 +3778,7 @@ server.tool(
 );
 
 // Rename Multiple Nodes Tool (batch)
-server.tool(
+registerTool(
   "rename_multiple_nodes",
   "Batch rename multiple nodes.",
   {
@@ -3547,7 +3814,7 @@ server.tool(
 );
 
 // Apply Style Batch Tool
-server.tool(
+registerTool(
   "apply_style_batch",
   "Batch apply a style (text/paint/effect/grid) to multiple nodes.",
   {
@@ -3578,7 +3845,7 @@ server.tool(
 );
 
 // Set Paint Batch Tool
-server.tool(
+registerTool(
   "set_paint_batch",
   "Batch set fill/stroke colors on multiple nodes.",
   {
@@ -3604,7 +3871,7 @@ server.tool(
 );
 
 // Delete Component Property Tool
-server.tool(
+registerTool(
   "delete_component_property",
   "Delete a property from a component.",
   {
@@ -3633,7 +3900,7 @@ server.tool(
 );
 
 // Edit Component Property Tool
-server.tool(
+registerTool(
   "edit_component_property",
   "Edit a component property in-place.",
   {
@@ -3810,7 +4077,7 @@ Remember that text is never just text—it's a core design element that must wor
 );
 
 // Set Multiple Text Contents Tool
-server.tool(
+registerTool(
   "set_multiple_text_contents",
   "Batch update text on multiple text nodes.",
   {
@@ -4124,7 +4391,7 @@ This strategy enables transferring content and property overrides from a source 
 );
 
 // Set Layout Mode Tool
-server.tool(
+registerTool(
   "set_layout_mode",
   "Set auto-layout mode (HORIZONTAL/VERTICAL/NONE).",
   {
@@ -4155,7 +4422,7 @@ server.tool(
 );
 
 // Set Padding Tool
-server.tool(
+registerTool(
   "set_padding",
   "Set padding on an auto-layout frame.",
   {
@@ -4202,7 +4469,7 @@ server.tool(
 );
 
 // Set Axis Align Tool
-server.tool(
+registerTool(
   "set_axis_align",
   "Set alignment in an auto-layout frame.",
   {
@@ -4249,7 +4516,7 @@ server.tool(
 );
 
 // Set Layout Sizing Tool
-server.tool(
+registerTool(
   "set_layout_sizing",
   "Set sizing behavior (FIXED/HUG/FILL).",
   {
@@ -4296,7 +4563,7 @@ server.tool(
 );
 
 // Set Item Spacing Tool
-server.tool(
+registerTool(
   "set_item_spacing",
   "Set spacing between children in auto-layout.",
   {
@@ -4332,7 +4599,7 @@ server.tool(
 );
 
 // A tool to get Figma Prototyping Reactions from multiple nodes
-server.tool(
+registerTool(
   "get_reactions",
   "Get prototype interactions from nodes.",
   {
@@ -4364,7 +4631,7 @@ server.tool(
 );
 
 // Create Connectors Tool
-server.tool(
+registerTool(
   "set_default_connector",
   "Set default connector style for connections.",
   {
@@ -4391,7 +4658,7 @@ server.tool(
 );
 
 // Connect Nodes Tool
-server.tool(
+registerTool(
   "create_connections",
   "Create visual connector lines between nodes.",
   {
@@ -4439,7 +4706,7 @@ server.tool(
 );
 
 // Set Focus Tool
-server.tool(
+registerTool(
   "set_focus",
   "Select a node and scroll viewport to center it.",
   {
@@ -4464,7 +4731,7 @@ server.tool(
 );
 
 // Set Selections Tool
-server.tool(
+registerTool(
   "set_selections",
   "Select multiple nodes and scroll to show them.",
   {
@@ -4493,7 +4760,7 @@ server.tool(
 // ============================================================================
 
 // Get Pages Tool
-server.tool(
+registerTool(
   "get_pages",
   "Get all pages with names, IDs, and child counts.",
   {},
@@ -4516,7 +4783,7 @@ server.tool(
 );
 
 // Create Page Tool
-server.tool(
+registerTool(
   "create_page",
   "Create a new page and switch to it.",
   {
@@ -4541,7 +4808,7 @@ server.tool(
 );
 
 // Switch Page Tool
-server.tool(
+registerTool(
   "switch_page",
   "Switch to a different page by ID.",
   {
@@ -4566,7 +4833,7 @@ server.tool(
 );
 
 // Delete Page Tool
-server.tool(
+registerTool(
   "delete_page",
   "Delete a page (cannot delete the last page).",
   {
@@ -4591,7 +4858,7 @@ server.tool(
 );
 
 // Rename Page Tool
-server.tool(
+registerTool(
   "rename_page",
   "Rename a page.",
   {
@@ -4621,7 +4888,7 @@ server.tool(
 // ============================================================================
 
 // Set Plugin Data Tool
-server.tool(
+registerTool(
   "set_plugin_data",
   "Store key-value metadata on a node.",
   {
@@ -4647,7 +4914,7 @@ server.tool(
 );
 
 // Get Plugin Data Tool
-server.tool(
+registerTool(
   "get_plugin_data",
   "Get stored metadata from a node by key.",
   {
@@ -4673,7 +4940,7 @@ server.tool(
 );
 
 // Get All Plugin Data Tool
-server.tool(
+registerTool(
   "get_all_plugin_data",
   "Get all stored metadata keys and values on a node.",
   {
@@ -4699,7 +4966,7 @@ server.tool(
 );
 
 // Delete Plugin Data Tool
-server.tool(
+registerTool(
   "delete_plugin_data",
   "Delete stored metadata from a node by key.",
   {
@@ -4861,12 +5128,11 @@ function connectToFigma(port: number = 3055) {
     
     // Auto-join channel from environment variable if set
     if (DEFAULT_CHANNEL) {
-      try {
-        await joinChannelInternal(DEFAULT_CHANNEL);
-        logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
-      } catch (error) {
-        logger.warn(`Failed to auto-join channel from environment variable: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      joiningChannel = joinChannelInternal(DEFAULT_CHANNEL)
+        .then(() => { logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`); })
+        .catch((error) => { logger.warn(`Failed to auto-join channel from environment variable: ${error instanceof Error ? error.message : String(error)}`); })
+        .finally(() => { joiningChannel = null; });
+      await joiningChannel;
     }
   });
 
@@ -4890,20 +5156,8 @@ function connectToFigma(port: number = 3055) {
         if (requestId && pendingRequests.has(requestId)) {
           const request = pendingRequests.get(requestId)!;
 
-          // Update last activity timestamp
+          // Update last activity timestamp; preserve original timeout
           request.lastActivity = Date.now();
-
-          // Reset the timeout to prevent timeouts during long-running operations
-          clearTimeout(request.timeout);
-
-          // Create a new timeout
-          request.timeout = setTimeout(() => {
-            if (pendingRequests.has(requestId)) {
-              logger.error(`Request ${requestId} timed out after extended period of inactivity`);
-              pendingRequests.delete(requestId);
-              request.reject(new Error('Request to Figma timed out'));
-            }
-          }, 60000); // 60 second timeout for inactivity
 
           // Log progress
           logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
@@ -4926,11 +5180,11 @@ function connectToFigma(port: number = 3055) {
       logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
       logger.log('myResponse' + JSON.stringify(myResponse));
 
-      // Handle response to a request
+      // Handle response to a request (match on result OR error field)
       if (
         myResponse.id &&
         pendingRequests.has(myResponse.id) &&
-        myResponse.result
+        (myResponse.result !== undefined || myResponse.error)
       ) {
         const request = pendingRequests.get(myResponse.id)!;
         clearTimeout(request.timeout);
@@ -4953,6 +5207,8 @@ function connectToFigma(port: number = 3055) {
       logger.error(`Error parsing message: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
+
+  ws.on('ping', () => ws?.pong());
 
   ws.on('error', (error) => {
     logger.error(`Socket error: ${error}`);
@@ -5037,10 +5293,15 @@ async function sendCommandToFigma(
   // Check if we need a channel for this command
   const requiresChannel = command !== "join";
   if (requiresChannel && !currentChannel) {
-    // First, try environment variable if set
-    if (DEFAULT_CHANNEL) {
+    // If a join is already in-progress (e.g. from ws.on('open')), wait for it
+    if (joiningChannel) {
+      await joiningChannel;
+    } else if (DEFAULT_CHANNEL) {
+      // First, try environment variable if set
       try {
-        await joinChannelInternal(DEFAULT_CHANNEL);
+        joiningChannel = joinChannelInternal(DEFAULT_CHANNEL)
+          .finally(() => { joiningChannel = null; });
+        await joiningChannel;
         logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
       } catch (envJoinError) {
         logger.warn(`Failed to join channel from environment variable: ${envJoinError instanceof Error ? envJoinError.message : String(envJoinError)}`);
@@ -5124,9 +5385,9 @@ async function sendCommandToFigma(
     return dispatchCommand(null);
   }
 
-  // Capture channel at enqueue time; serialize commands per channel
+  // Dispatch with appropriate concurrency strategy
   const channel = currentChannel!;
-  return enqueueChannelTask(channel, () => dispatchCommand(channel));
+  return enqueueChannelTask(channel, () => dispatchCommand(channel), command, params);
 }
 
 // Start the server
@@ -5142,7 +5403,8 @@ async function main() {
   // Start the MCP server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info('FigmaMCP server running on stdio');
+  const estimatedTokens = Math.round(_toolSchemaBytes / 4);
+  logger.info(`FigmaMCP server running on stdio [${_toolCount} tools, ~${estimatedTokens} schema tokens, lean=${LEAN_MODE}]`);
 
   // Notify client to refresh tool list (critical for bun --watch restarts)
   try {
