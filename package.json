@@ -28,7 +28,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "pub:release": "bun run build && npm publish"
+    "pub:release": "bun run build && npm publish",
+    "restart:mcp": "pkill -f 'bun.*server\\.ts' 2>/dev/null || true"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.100.2",

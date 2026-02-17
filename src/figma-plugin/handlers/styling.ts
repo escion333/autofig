@@ -182,6 +182,76 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
 }
 
 /**
+ * Recursively remove all raw (unbound, #FFFFFF) white solid fills from nodes
+ * under the given nodeId (or the current page if omitted).
+ */
+export async function removeRawWhiteFills(
+  params: CommandParams['remove_raw_white_fills']
+): Promise<{
+  success: boolean;
+  modified: number;
+  skipped: number;
+  details: Array<{ id: string; name: string; removedCount: number }>;
+  errors: Array<{ id: string; name: string; reason: string }>;
+}> {
+  const { nodeId } = params || {};
+
+  const root: BaseNode = nodeId
+    ? await figma.getNodeByIdAsync(nodeId)!
+    : figma.currentPage;
+
+  if (!root) throw new Error(`Node not found: ${nodeId}`);
+
+  const modified: Array<{ id: string; name: string; removedCount: number }> = [];
+  const errors: Array<{ id: string; name: string; reason: string }> = [];
+
+  function isRawWhite(paint: Paint): boolean {
+    if (paint.type !== 'SOLID') return false;
+    const { r, g, b } = (paint as SolidPaint).color;
+    if (r < 0.99 || g < 0.99 || b < 0.99) return false;
+    if ((paint as SolidPaint).boundVariables?.color) return false;
+    return true;
+  }
+
+  function processNode(node: SceneNode) {
+    if ('fills' in node && node.fills !== figma.mixed) {
+      const fills = node.fills as Paint[];
+      const whiteFills = fills.filter(isRawWhite);
+      if (whiteFills.length > 0) {
+        const newFills = fills.filter((p) => !isRawWhite(p));
+        try {
+          (node as GeometryMixin).fills = newFills;
+          modified.push({ id: node.id, name: node.name, removedCount: whiteFills.length });
+        } catch (e) {
+          errors.push({ id: node.id, name: node.name, reason: String(e) });
+        }
+      }
+    }
+    if ('children' in node) {
+      for (const child of (node as ChildrenMixin).children) {
+        processNode(child as SceneNode);
+      }
+    }
+  }
+
+  if ('children' in root) {
+    for (const child of (root as ChildrenMixin).children) {
+      processNode(child as SceneNode);
+    }
+  } else if ('fills' in root) {
+    processNode(root as SceneNode);
+  }
+
+  return {
+    success: true,
+    modified: modified.length,
+    skipped: errors.length,
+    details: modified,
+    errors,
+  };
+}
+
+/**
  * Set opacity on a node
  */
 export async function setOpacity(params: CommandParams['set_opacity']): Promise<NodeResult> {

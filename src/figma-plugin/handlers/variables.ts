@@ -843,6 +843,11 @@ function convertToFigmaValue(
   if (typeof value === 'string' && (resolvedType === 'COLOR' || resolvedType === 'FLOAT')) {
     try { value = JSON.parse(value) as VariableValueInput; } catch (_e) { /* not JSON */ }
   }
+  // Handle VARIABLE_ALIAS before type-specific checks
+  if (typeof value === 'object' && value !== null && 'type' in value && (value as { type: string }).type === 'VARIABLE_ALIAS') {
+    return value as unknown as { type: 'VARIABLE_ALIAS'; id: string };
+  }
+
   if (resolvedType === 'COLOR') {
     if (typeof value === 'object' && 'r' in value) {
       return {

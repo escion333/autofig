@@ -38,6 +38,36 @@ export async function moveNode(params: CommandParams['move_node']): Promise<Node
 }
 
 /**
+ * Reparent a node into a new parent frame/group
+ */
+export async function reparentNode(params: CommandParams['reparent_node']): Promise<NodeResult> {
+  const { nodeId, newParentId, insertIndex } = params || {};
+
+  if (!nodeId) throw new Error('Missing nodeId parameter');
+  if (!newParentId) throw new Error('Missing newParentId parameter');
+
+  const node = await getNodeById(nodeId);
+  const newParent = await getNodeById(newParentId);
+
+  if (!('appendChild' in newParent)) {
+    throw new Error(`Target node "${newParent.name}" (${newParent.type}) cannot contain children`);
+  }
+
+  const parent = newParent as BaseNode & ChildrenMixin;
+  if (insertIndex !== undefined) {
+    parent.insertChild(insertIndex, node as SceneNode);
+  } else {
+    parent.appendChild(node as SceneNode);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    parentId: newParentId,
+  };
+}
+
+/**
  * Resize a node
  */
 export async function resizeNode(params: CommandParams['resize_node']): Promise<NodeResult> {
@@ -329,6 +359,214 @@ export async function setConstraints(
     nodeName: node.name,
     horizontal: constrainedNode.constraints.horizontal as ConstraintType,
     vertical: constrainedNode.constraints.vertical as ConstraintType,
+  };
+}
+
+// ============================================================================
+// Batch Locked & Constraint Operations
+// ============================================================================
+
+/**
+ * Batch set locked on multiple nodes
+ */
+export async function setMultipleLocked(params: CommandParams['set_multiple_locked']) {
+  const { nodes } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+    throw new Error('Missing or invalid nodes parameter');
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'set_multiple_locked',
+    'started',
+    0,
+    nodes.length,
+    0,
+    `Starting to set locked on ${nodes.length} nodes`,
+    { totalNodes: nodes.length }
+  );
+
+  const results: Array<{ success: boolean; nodeId: string; locked?: boolean; error?: string }> = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  const CHUNK_SIZE = 5;
+  const chunks: Array<typeof nodes> = [];
+  for (let i = 0; i < nodes.length; i += CHUNK_SIZE) {
+    chunks.push(nodes.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+
+    sendProgressUpdate(
+      commandId,
+      'set_multiple_locked',
+      'in_progress',
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodes.length,
+      successCount + failureCount,
+      `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+      { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+    );
+
+    const chunkPromises = chunk.map(async ({ nodeId, locked }) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+        }
+        if (!('locked' in node)) {
+          return { success: false, nodeId, error: `Node does not support locked: ${nodeId}` };
+        }
+        (node as SceneNode).locked = locked;
+        return { success: true, nodeId, locked };
+      } catch (error) {
+        return { success: false, nodeId, error: (error as Error).message };
+      }
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+    chunkResults.forEach((result) => {
+      if (result.success) successCount++;
+      else failureCount++;
+      results.push(result);
+    });
+
+    if (chunkIndex < chunks.length - 1) {
+      await delay(100);
+    }
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'set_multiple_locked',
+    'completed',
+    100,
+    nodes.length,
+    successCount + failureCount,
+    `Set locked complete: ${successCount} successful, ${failureCount} failed`,
+    { results }
+  );
+
+  figma.notify(`✅ Set locked on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : ''));
+
+  return {
+    success: successCount > 0,
+    successCount,
+    failureCount,
+    totalNodes: nodes.length,
+    results,
+    commandId,
+  };
+}
+
+/**
+ * Batch set constraints on multiple nodes
+ */
+export async function setMultipleConstraints(params: CommandParams['set_multiple_constraints']) {
+  const { nodes } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+    throw new Error('Missing or invalid nodes parameter');
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'set_multiple_constraints',
+    'started',
+    0,
+    nodes.length,
+    0,
+    `Starting to set constraints on ${nodes.length} nodes`,
+    { totalNodes: nodes.length }
+  );
+
+  const results: Array<{ success: boolean; nodeId: string; horizontal?: string; vertical?: string; error?: string }> = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  const CHUNK_SIZE = 5;
+  const chunks: Array<typeof nodes> = [];
+  for (let i = 0; i < nodes.length; i += CHUNK_SIZE) {
+    chunks.push(nodes.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+
+    sendProgressUpdate(
+      commandId,
+      'set_multiple_constraints',
+      'in_progress',
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodes.length,
+      successCount + failureCount,
+      `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+      { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+    );
+
+    const chunkPromises = chunk.map(async ({ nodeId, horizontal, vertical }) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+        }
+        if (!('constraints' in node)) {
+          return { success: false, nodeId, error: `Node does not support constraints: ${nodeId}` };
+        }
+        const constrainedNode = node as SceneNode & { constraints: Constraints };
+        const current = { ...constrainedNode.constraints };
+        constrainedNode.constraints = {
+          horizontal: horizontal ?? current.horizontal,
+          vertical: vertical ?? current.vertical,
+        };
+        return {
+          success: true,
+          nodeId,
+          horizontal: constrainedNode.constraints.horizontal,
+          vertical: constrainedNode.constraints.vertical,
+        };
+      } catch (error) {
+        return { success: false, nodeId, error: (error as Error).message };
+      }
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+    chunkResults.forEach((result) => {
+      if (result.success) successCount++;
+      else failureCount++;
+      results.push(result);
+    });
+
+    if (chunkIndex < chunks.length - 1) {
+      await delay(100);
+    }
+  }
+
+  sendProgressUpdate(
+    commandId,
+    'set_multiple_constraints',
+    'completed',
+    100,
+    nodes.length,
+    successCount + failureCount,
+    `Set constraints complete: ${successCount} successful, ${failureCount} failed`,
+    { results }
+  );
+
+  figma.notify(`✅ Set constraints on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : ''));
+
+  return {
+    success: successCount > 0,
+    successCount,
+    failureCount,
+    totalNodes: nodes.length,
+    results,
+    commandId,
   };
 }
 

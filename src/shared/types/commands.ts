@@ -91,6 +91,9 @@ export type FigmaCommand =
   // Constraints (Responsive)
   | 'get_constraints'
   | 'set_constraints'
+  | 'set_multiple_constraints'
+  // Node Locking
+  | 'set_multiple_locked'
   // Grid Styles
   | 'get_grid_styles'
   | 'create_grid_style'
@@ -99,6 +102,7 @@ export type FigmaCommand =
   | 'set_layout_grids'
   // Layout
   | 'move_node'
+  | 'reparent_node'
   | 'resize_node'
   | 'rename_node'
   | 'rename_multiple_nodes'
@@ -149,6 +153,8 @@ export type FigmaCommand =
   // Batch Styles
   | 'apply_style_batch'
   | 'set_paint_batch'
+  // Fill Utilities
+  | 'remove_raw_white_fills'
   // Export
   | 'export_node_as_image'
   | 'export_multiple_nodes'
@@ -515,6 +521,21 @@ export interface CommandParams {
     horizontal?: ConstraintType;
     vertical?: ConstraintType;
   };
+  set_multiple_constraints: {
+    nodes: Array<{
+      nodeId: string;
+      horizontal?: ConstraintType;
+      vertical?: ConstraintType;
+    }>;
+  };
+
+  // Node Locking
+  set_multiple_locked: {
+    nodes: Array<{
+      nodeId: string;
+      locked: boolean;
+    }>;
+  };
 
   // Grid Styles
   get_grid_styles: Record<string, never>;
@@ -540,6 +561,11 @@ export interface CommandParams {
     nodeId: string;
     x: number;
     y: number;
+  };
+  reparent_node: {
+    nodeId: string;
+    newParentId: string;
+    insertIndex?: number;
   };
   rename_node: {
     nodeId: string;
@@ -769,6 +795,11 @@ export interface CommandParams {
     scale?: number;
   };
 
+  // Fill Utilities
+  remove_raw_white_fills: {
+    nodeId?: string;
+  };
+
   // WebSocket Channel Management (MCP server only)
   join: {
     channel: string;
@@ -875,6 +906,7 @@ export interface AnnotationInfo {
 
 export type VariableValueInput =
   | { r: number; g: number; b: number; a?: number }  // COLOR
+  | { type: 'VARIABLE_ALIAS'; id: string }  // alias to another variable
   | number  // FLOAT
   | string  // STRING
   | boolean;  // BOOLEAN

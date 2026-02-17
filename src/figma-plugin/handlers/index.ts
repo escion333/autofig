@@ -41,7 +41,7 @@ import {
 } from './creation';
 
 // Styling
-import { setFillColor, setStrokeColor, setCornerRadius, setOpacity } from './styling';
+import { setFillColor, setStrokeColor, setCornerRadius, setOpacity, removeRawWhiteFills } from './styling';
 
 // Organization
 import { groupNodes, ungroupNode } from './organization';
@@ -98,6 +98,7 @@ import {
 // Layout & Constraints
 import {
   moveNode,
+  reparentNode,
   resizeNode,
   renameNode,
   renameMultipleNodes,
@@ -106,6 +107,8 @@ import {
   cloneNode,
   getConstraints,
   setConstraints,
+  setMultipleConstraints,
+  setMultipleLocked,
   reorderNode,
   moveToFront,
   moveToBack,
@@ -247,6 +250,8 @@ export async function handleCommand(
       return await setCornerRadius(params as CommandParams['set_corner_radius']);
     case 'set_opacity':
       return await setOpacity(params as CommandParams['set_opacity']);
+    case 'remove_raw_white_fills':
+      return await removeRawWhiteFills(params as CommandParams['remove_raw_white_fills']);
 
     // Organization
     case 'group_nodes':
@@ -333,6 +338,10 @@ export async function handleCommand(
       return await getConstraints(params as CommandParams['get_constraints']);
     case 'set_constraints':
       return await setConstraints(params as CommandParams['set_constraints']);
+    case 'set_multiple_constraints':
+      return await setMultipleConstraints(params as CommandParams['set_multiple_constraints']);
+    case 'set_multiple_locked':
+      return await setMultipleLocked(params as CommandParams['set_multiple_locked']);
 
     // Grid Styles
     case 'get_grid_styles':
@@ -349,6 +358,8 @@ export async function handleCommand(
     // Layout
     case 'move_node':
       return await moveNode(params as CommandParams['move_node']);
+    case 'reparent_node':
+      return await reparentNode(params as CommandParams['reparent_node']);
     case 'resize_node':
       return await resizeNode(params as CommandParams['resize_node']);
     case 'rename_node':

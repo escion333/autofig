@@ -1725,6 +1725,58 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setCornerRadius, "setCornerRadius");
+  async function removeRawWhiteFills(params) {
+    const { nodeId } = params || {};
+    const root = nodeId ? await figma.getNodeByIdAsync(nodeId) : figma.currentPage;
+    if (!root) throw new Error(`Node not found: ${nodeId}`);
+    const modified = [];
+    const errors = [];
+    function isRawWhite(paint) {
+      var _a;
+      if (paint.type !== "SOLID") return false;
+      const { r, g, b } = paint.color;
+      if (r < 0.99 || g < 0.99 || b < 0.99) return false;
+      if ((_a = paint.boundVariables) == null ? void 0 : _a.color) return false;
+      return true;
+    }
+    __name(isRawWhite, "isRawWhite");
+    function processNode(node) {
+      if ("fills" in node && node.fills !== figma.mixed) {
+        const fills = node.fills;
+        const whiteFills = fills.filter(isRawWhite);
+        if (whiteFills.length > 0) {
+          const newFills = fills.filter((p) => !isRawWhite(p));
+          try {
+            node.fills = newFills;
+            modified.push({ id: node.id, name: node.name, removedCount: whiteFills.length });
+          } catch (e) {
+            errors.push({ id: node.id, name: node.name, reason: String(e) });
+          }
+        }
+      }
+      if ("children" in node) {
+        for (const child of node.children) {
+          processNode(child);
+        }
+      }
+    }
+    __name(processNode, "processNode");
+    if ("children" in root) {
+      for (const child of root.children) {
+        processNode(child);
+      }
+    } else if ("fills" in root) {
+      processNode(root);
+    }
+    return {
+      success: true,
+      modified: modified.length,
+      skipped: errors.length,
+      details: modified,
+      errors
+    };
+  }
+  __name(removeRawWhiteFills, "removeRawWhiteFills");
   async function setOpacity(params) {
     const { nodeId, opacity } = params || {};
     if (!nodeId) {
@@ -2399,6 +2451,9 @@ The node may have been deleted or the ID is invalid.
         value = JSON.parse(value);
       } catch (_e) {
       }
+    }
+    if (typeof value === "object" && value !== null && "type" in value && value.type === "VARIABLE_ALIAS") {
+      return value;
     }
     if (resolvedType === "COLOR") {
       if (typeof value === "object" && "r" in value) {
@@ -3266,6 +3321,28 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(moveNode, "moveNode");
+  async function reparentNode(params) {
+    const { nodeId, newParentId, insertIndex } = params || {};
+    if (!nodeId) throw new Error("Missing nodeId parameter");
+    if (!newParentId) throw new Error("Missing newParentId parameter");
+    const node = await getNodeById(nodeId);
+    const newParent = await getNodeById(newParentId);
+    if (!("appendChild" in newParent)) {
+      throw new Error(`Target node "${newParent.name}" (${newParent.type}) cannot contain children`);
+    }
+    const parent = newParent;
+    if (insertIndex !== void 0) {
+      parent.insertChild(insertIndex, node);
+    } else {
+      parent.appendChild(node);
+    }
+    return {
+      id: node.id,
+      name: node.name,
+      parentId: newParentId
+    };
+  }
+  __name(reparentNode, "reparentNode");
   async function resizeNode(params) {
     const { nodeId, width, height } = params || {};
     if (!nodeId) {
@@ -3461,6 +3538,180 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setConstraints, "setConstraints");
+  async function setMultipleLocked(params) {
+    const { nodes } = params || {};
+    const commandId = generateCommandId();
+    if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+      throw new Error("Missing or invalid nodes parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_locked",
+      "started",
+      0,
+      nodes.length,
+      0,
+      `Starting to set locked on ${nodes.length} nodes`,
+      { totalNodes: nodes.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < nodes.length; i += CHUNK_SIZE) {
+      chunks.push(nodes.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "set_multiple_locked",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        nodes.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, locked }) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          if (!("locked" in node)) {
+            return { success: false, nodeId, error: `Node does not support locked: ${nodeId}` };
+          }
+          node.locked = locked;
+          return { success: true, nodeId, locked };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) successCount++;
+        else failureCount++;
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_locked",
+      "completed",
+      100,
+      nodes.length,
+      successCount + failureCount,
+      `Set locked complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    figma.notify(`\u2705 Set locked on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : ""));
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalNodes: nodes.length,
+      results,
+      commandId
+    };
+  }
+  __name(setMultipleLocked, "setMultipleLocked");
+  async function setMultipleConstraints(params) {
+    const { nodes } = params || {};
+    const commandId = generateCommandId();
+    if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+      throw new Error("Missing or invalid nodes parameter");
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_constraints",
+      "started",
+      0,
+      nodes.length,
+      0,
+      `Starting to set constraints on ${nodes.length} nodes`,
+      { totalNodes: nodes.length }
+    );
+    const results = [];
+    let successCount = 0;
+    let failureCount = 0;
+    const CHUNK_SIZE = 5;
+    const chunks = [];
+    for (let i = 0; i < nodes.length; i += CHUNK_SIZE) {
+      chunks.push(nodes.slice(i, i + CHUNK_SIZE));
+    }
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      sendProgressUpdate(
+        commandId,
+        "set_multiple_constraints",
+        "in_progress",
+        Math.round(5 + chunkIndex / chunks.length * 90),
+        nodes.length,
+        successCount + failureCount,
+        `Processing chunk ${chunkIndex + 1}/${chunks.length}`,
+        { currentChunk: chunkIndex + 1, totalChunks: chunks.length }
+      );
+      const chunkPromises = chunk.map(async ({ nodeId, horizontal, vertical }) => {
+        try {
+          const node = await figma.getNodeByIdAsync(nodeId);
+          if (!node) {
+            return { success: false, nodeId, error: `Node not found: ${nodeId}` };
+          }
+          if (!("constraints" in node)) {
+            return { success: false, nodeId, error: `Node does not support constraints: ${nodeId}` };
+          }
+          const constrainedNode = node;
+          const current = __spreadValues({}, constrainedNode.constraints);
+          constrainedNode.constraints = {
+            horizontal: horizontal != null ? horizontal : current.horizontal,
+            vertical: vertical != null ? vertical : current.vertical
+          };
+          return {
+            success: true,
+            nodeId,
+            horizontal: constrainedNode.constraints.horizontal,
+            vertical: constrainedNode.constraints.vertical
+          };
+        } catch (error) {
+          return { success: false, nodeId, error: error.message };
+        }
+      });
+      const chunkResults = await Promise.all(chunkPromises);
+      chunkResults.forEach((result) => {
+        if (result.success) successCount++;
+        else failureCount++;
+        results.push(result);
+      });
+      if (chunkIndex < chunks.length - 1) {
+        await delay(100);
+      }
+    }
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_constraints",
+      "completed",
+      100,
+      nodes.length,
+      successCount + failureCount,
+      `Set constraints complete: ${successCount} successful, ${failureCount} failed`,
+      { results }
+    );
+    figma.notify(`\u2705 Set constraints on ${successCount} nodes` + (failureCount > 0 ? ` (${failureCount} failed)` : ""));
+    return {
+      success: successCount > 0,
+      successCount,
+      failureCount,
+      totalNodes: nodes.length,
+      results,
+      commandId
+    };
+  }
+  __name(setMultipleConstraints, "setMultipleConstraints");
   async function reorderNode(params) {
     const { nodeId, index } = params || {};
     if (!nodeId) {
@@ -5731,6 +5982,8 @@ The node may have been deleted or the ID is invalid.
         return await setCornerRadius(params);
       case "set_opacity":
         return await setOpacity(params);
+      case "remove_raw_white_fills":
+        return await removeRawWhiteFills(params);
       // Organization
       case "group_nodes":
         return await groupNodes(params);
@@ -5811,6 +6064,10 @@ The node may have been deleted or the ID is invalid.
         return await getConstraints(params);
       case "set_constraints":
         return await setConstraints(params);
+      case "set_multiple_constraints":
+        return await setMultipleConstraints(params);
+      case "set_multiple_locked":
+        return await setMultipleLocked(params);
       // Grid Styles
       case "get_grid_styles":
         return await getGridStyles();
@@ -5825,6 +6082,8 @@ The node may have been deleted or the ID is invalid.
       // Layout
       case "move_node":
         return await moveNode(params);
+      case "reparent_node":
+        return await reparentNode(params);
       case "resize_node":
         return await resizeNode(params);
       case "rename_node":

@@ -9,6 +9,12 @@ import type { FigmaCommand } from "../shared/types";
 import { rgbaToHex } from "../shared/utils/color.js";
 import { filterFigmaNode, type RawFigmaNode } from "../shared/utils/node-filter.js";
 
+// Helper: MCP params arrive as JSON strings for arrays — preprocess to parse them
+const zStringArray = z.preprocess(
+  (val) => typeof val === 'string' ? JSON.parse(val) : val,
+  z.array(z.string())
+);
+
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
   id: string;
@@ -102,6 +108,10 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   // Variable batch binding
   'bind_multiple_variables': 300000,   // 5 minutes - batch variable binding
 
+  // Batch node property operations
+  'set_multiple_locked': 300000,       // 5 minutes - batch locked setting
+  'set_multiple_constraints': 300000,  // 5 minutes - batch constraint setting
+
   // Node rename operations
   'rename_multiple_nodes': 300000,     // 5 minutes - batch node renaming
 
@@ -135,6 +145,18 @@ const pendingRequests = new Map<string, {
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
+
+// Per-channel serial queues — ensures one command in-flight at a time per channel
+const channelQueues = new Map<string, Promise<void>>();
+
+function enqueueChannelTask<T>(channel: string, task: () => Promise<T>): Promise<T> {
+  const prev = channelQueues.get(channel) ?? Promise.resolve();
+  // Chain task; run regardless of whether prev succeeded or failed
+  const next = prev.then(task, task);
+  // Store a void/error-suppressed tail so the chain doesn't accumulate rejections
+  channelQueues.set(channel, next.then(() => {}, () => {}));
+  return next;
+}
 
 // Check for channel from environment variable
 const DEFAULT_CHANNEL = process.env.AUTOFIG_CHANNEL || "autofig";
@@ -506,7 +528,7 @@ server.tool(
   "get_nodes_info",
   "Get detailed properties of multiple nodes by IDs.",
   {
-    nodeIds: z.array(z.string())
+    nodeIds: zStringArray
   },
   async ({ nodeIds }: any) => {
     try {
@@ -866,6 +888,33 @@ server.tool(
   }
 );
 
+// Reparent Node Tool
+server.tool(
+  "reparent_node",
+  "Move a node into a different parent frame or group.",
+  {
+    nodeId: z.string(),
+    newParentId: z.string(),
+    insertIndex: z.number().int().nonnegative().optional(),
+  },
+  async ({ nodeId, newParentId, insertIndex }: any) => {
+    try {
+      const result = await sendCommandToFigma("reparent_node", { nodeId, newParentId, insertIndex });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Reparented node "${typedResult.name}" into parent ${newParentId}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return formatErrorResponse("reparenting node", error);
+    }
+  }
+);
+
 // Clone Node Tool
 server.tool(
   "clone_node",
@@ -1083,7 +1132,7 @@ server.tool(
   "delete_multiple_nodes",
   "Delete multiple nodes in one operation.",
   {
-    nodeIds: z.array(z.string()),
+    nodeIds: zStringArray,
   },
   async ({ nodeIds }: any) => {
     try {
@@ -1136,7 +1185,7 @@ server.tool(
   "export_multiple_nodes",
   "Batch export nodes as images.",
   {
-    nodeIds: z.array(z.string()),
+    nodeIds: zStringArray,
     format: z
       .enum(["PNG", "JPG", "SVG", "PDF"])
       .optional()
@@ -1242,7 +1291,7 @@ server.tool(
   "Create a variable collection with optional modes.",
   {
     name: z.string().describe("Name of the collection (e.g., 'Colors', 'Spacing', 'Typography')"),
-    modes: z.array(z.string()).optional().describe("Optional array of mode names (e.g., ['Light', 'Dark']). Defaults to a single 'Mode 1' if not provided."),
+    modes: zStringArray.optional().describe("Optional array of mode names (e.g., ['Light', 'Dark']). Defaults to a single 'Mode 1' if not provided."),
   },
   async ({ name, modes }: { name: string; modes?: string[] }) => {
     try {
@@ -1288,10 +1337,11 @@ server.tool(
     modeId: z.string().describe("Mode ID from collection modes"),
     value: z.union([
       rgbaSchema,
+      z.object({ type: z.literal("VARIABLE_ALIAS"), id: z.string() }),
       z.number(),
       z.string(),
       z.boolean(),
-    ]).describe("The value to set. Type must match the variable's resolvedType."),
+    ]).describe("The value to set. Use {type:'VARIABLE_ALIAS',id:'VariableID:...'} to alias another variable."),
   },
   async ({ variableId, modeId, value }: { variableId: string; modeId: string; value: unknown }) => {
     try {
@@ -1335,16 +1385,20 @@ server.tool(
   "set_multiple_variable_values",
   "Batch set variable values across modes.",
   {
-    updates: z.array(z.object({
-      variableId: z.string(),
-      modeId: z.string().describe("The mode ID to set the value for"),
-      value: z.union([
-        rgbaSchema,
-        z.number(),
-        z.string(),
-        z.boolean(),
-      ]).describe("The value to set. Type must match the variable's resolvedType."),
-    })).min(1).describe("Array of variable value updates"),
+    updates: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        variableId: z.string(),
+        modeId: z.string().describe("The mode ID to set the value for"),
+        value: z.union([
+          rgbaSchema,
+          z.object({ type: z.literal("VARIABLE_ALIAS"), id: z.string() }),
+          z.number(),
+          z.string(),
+          z.boolean(),
+        ]).describe("The value to set. Use {type:'VARIABLE_ALIAS',id:'VariableID:...'} to alias another variable."),
+      })).min(1)
+    ).describe("Array of variable value updates"),
   },
   async ({ updates }: { updates: Array<{ variableId: string; modeId: string; value: unknown }> }) => {
     try {
@@ -1496,7 +1550,7 @@ server.tool(
   "create_component_set",
   "Combine components into a variant set.",
   {
-    componentIds: z.array(z.string()).describe("Array of component IDs to combine into a variant set (minimum 2)"),
+    componentIds: zStringArray.describe("Array of component IDs to combine into a variant set (minimum 2)"),
     name: z.string().optional().describe("Optional name for the component set"),
   },
   async ({ componentIds, name }: { componentIds: string[]; name?: string }) => {
@@ -1539,7 +1593,7 @@ server.tool(
       type: z.enum(["COMPONENT", "COMPONENT_SET"]),
       key: z.string(),
     })).optional().describe("For INSTANCE_SWAP: preferred components that can be swapped in"),
-    variantOptions: z.array(z.string()).optional().describe("For VARIANT type: array of variant option values"),
+    variantOptions: zStringArray.optional().describe("For VARIANT type: array of variant option values"),
   },
   async ({ componentId, propertyName, propertyType, defaultValue, preferredValues, variantOptions }: {
     componentId: string;
@@ -1671,19 +1725,21 @@ server.tool(
     nodeId: z
       .string()
       ,
-    annotations: z
-      .array(
+    annotations: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(
         z.object({
           nodeId: z.string(),
           labelMarkdown: z.string().describe("The annotation text in markdown format"),
           categoryId: z.string().optional().describe("The ID of the annotation category"),
           annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
-          properties: z.array(z.object({
-            type: z.string()
-          })).optional().describe("Additional properties for the annotation")
+          properties: z.preprocess(
+            (val) => typeof val === 'string' ? JSON.parse(val) : val,
+            z.array(z.object({ type: z.string() }))
+          ).optional().describe("Additional properties for the annotation")
         })
       )
-      .describe("Array of annotations to apply"),
+    ).describe("Array of annotations to apply"),
   },
   async ({ nodeId, annotations }: any) => {
     try {
@@ -1808,14 +1864,17 @@ server.tool(
   "create_multiple_component_instances",
   "Batch create component instances with progress.",
   {
-    instances: z.array(z.object({
-      componentId: z.string().optional().describe("Node ID of a local component to instantiate"),
-      componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
-      parentId: z.string().describe("Parent node ID to insert the instance into"),
-      name: z.string().optional().describe("Name to assign to the instance"),
-      insertIndex: z.number().optional().describe("Child index to insert at (0 = first child). If omitted, appends as last child."),
-      visible: z.boolean().optional().describe("Whether the instance should be visible (default: true)"),
-    })).describe("Array of instances to create"),
+    instances: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        componentId: z.string().optional().describe("Node ID of a local component to instantiate"),
+        componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
+        parentId: z.string().describe("Parent node ID to insert the instance into"),
+        name: z.string().optional().describe("Name to assign to the instance"),
+        insertIndex: z.number().optional().describe("Child index to insert at (0 = first child). If omitted, appends as last child."),
+        visible: z.boolean().optional().describe("Whether the instance should be visible (default: true)"),
+      }))
+    ).describe("Array of instances to create"),
   },
   async ({ instances }: any) => {
     try {
@@ -1845,10 +1904,13 @@ server.tool(
   "set_multiple_component_property_references",
   "Batch wire instances to component properties.",
   {
-    bindings: z.array(z.object({
-      nodeId: z.string().describe("ID of the instance node inside the component to bind"),
-      references: z.record(z.string(), z.string()).describe("Property references map, e.g. { mainComponent: 'leadingIcon#hash', visible: 'showLeadingIcon#hash' }"),
-    })).describe("Array of bindings to apply"),
+    bindings: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        nodeId: z.string().describe("ID of the instance node inside the component to bind"),
+        references: z.record(z.string(), z.string()).describe("Property references map, e.g. { mainComponent: 'leadingIcon#hash', visible: 'showLeadingIcon#hash' }"),
+      }))
+    ).describe("Array of bindings to apply"),
   },
   async ({ bindings }: any) => {
     try {
@@ -1909,7 +1971,7 @@ server.tool(
   "Apply captured overrides to target instances.",
   {
     sourceInstanceId: z.string().describe("ID of the source component instance"),
-    targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
+    targetNodeIds: zStringArray.describe("Array of target instance IDs. Currently selected instances will be used.")
   },
   async ({ sourceInstanceId, targetNodeIds }: any) => {
     try {
@@ -2012,12 +2074,37 @@ server.tool(
   }
 );
 
+// Remove Raw White Fills Tool
+server.tool(
+  "remove_raw_white_fills",
+  "Recursively scan a node (or the whole current page) and remove all raw unbound white (#FFFFFF) solid fills. Variable-bound fills are left untouched.",
+  {
+    nodeId: z.string().optional().describe("Root node to scan. Omit to scan the entire current page."),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("remove_raw_white_fills", { nodeId });
+      const r = result as { modified: number; skipped: number; details: Array<{ id: string; name: string; removedCount: number }>; errors: Array<{ id: string; name: string; reason: string }> };
+      const lines = [
+        `Removed raw white fills from ${r.modified} node(s).`,
+        ...(r.skipped > 0 ? [`${r.skipped} node(s) skipped due to errors.`] : []),
+        '',
+        ...r.details.map(d => `  • ${d.name} (${d.id}) — removed ${d.removedCount} fill(s)`),
+        ...(r.errors.length > 0 ? ['', 'Errors:', ...r.errors.map(e => `  ✗ ${e.name}: ${e.reason}`)] : []),
+      ];
+      return { content: [{ type: "text", text: lines.join('\n') }] };
+    } catch (error) {
+      return formatErrorResponse("removing raw white fills", error);
+    }
+  }
+);
+
 // Group Nodes Tool
 server.tool(
   "group_nodes",
   "Group multiple nodes into a single group.",
   {
-    nodeIds: z.array(z.string()).min(2),
+    nodeIds: z.preprocess((val) => typeof val === 'string' ? JSON.parse(val) : val, z.array(z.string()).min(2)),
     name: z.string().optional().describe("Group name"),
   },
   async ({ nodeIds, name }: any) => {
@@ -2856,6 +2943,79 @@ server.tool(
   }
 );
 
+// Set Multiple Locked Tool (batch)
+server.tool(
+  "set_multiple_locked",
+  "Batch set locked (true/false) on multiple nodes.",
+  {
+    nodes: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        nodeId: z.string().describe("ID of the node"),
+        locked: z.boolean().describe("Whether the node should be locked"),
+      })).min(1)
+    ).describe("Array of {nodeId, locked} pairs"),
+  },
+  async ({ nodes }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_multiple_locked", { nodes });
+      const typedResult = result as { successCount: number; failureCount: number; totalNodes: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch set locked complete: ${typedResult.successCount}/${typedResult.totalNodes} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return formatErrorResponse("setting locked", error);
+    }
+  }
+);
+
+// Set Multiple Constraints Tool (batch)
+server.tool(
+  "set_multiple_constraints",
+  "Batch set responsive constraints (MIN/CENTER/MAX/STRETCH/SCALE) on multiple nodes.",
+  {
+    nodes: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        nodeId: z.string().describe("ID of the node"),
+        horizontal: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Horizontal constraint"),
+        vertical: z.enum(["MIN", "CENTER", "MAX", "STRETCH", "SCALE"]).optional().describe("Vertical constraint"),
+      })).min(1)
+    ).describe("Array of {nodeId, horizontal?, vertical?} entries"),
+  },
+  async ({ nodes }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_multiple_constraints", { nodes });
+      const typedResult = result as { successCount: number; failureCount: number; totalNodes: number };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Batch set constraints complete: ${typedResult.successCount}/${typedResult.totalNodes} successful` +
+              (typedResult.failureCount > 0 ? ` (${typedResult.failureCount} failed)` : ''),
+          },
+          {
+            type: "text" as const,
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return formatErrorResponse("setting constraints", error);
+    }
+  }
+);
+
 // ============================================================================
 // Grid Style Tools
 // ============================================================================
@@ -3214,7 +3374,7 @@ server.tool(
   "Find descendant nodes matching specific types.",
   {
     nodeId: z.string().describe("ID of the node to scan"),
-    types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])"),
+    types: zStringArray.describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])"),
     maxResults: z.number().positive().optional().describe("Max nodes to return"),
   },
   async ({ nodeId, types, maxResults }: any) => {
@@ -3289,11 +3449,14 @@ server.tool(
   "bind_multiple_variables",
   "Batch bind variables to node properties.",
   {
-    bindings: z.array(z.object({
-      nodeId: z.string().describe("ID of the node to bind"),
-      field: z.string().describe("Field to bind (fills, strokes, cornerRadius, opacity, etc.)"),
-      variableId: z.string().describe("ID of the variable to bind"),
-    })).describe("Array of bindings to apply"),
+    bindings: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        nodeId: z.string().describe("ID of the node to bind"),
+        field: z.string().describe("Field to bind (fills, strokes, cornerRadius, opacity, etc.)"),
+        variableId: z.string().describe("ID of the variable to bind"),
+      }))
+    ).describe("Array of bindings to apply"),
   },
   async ({ bindings }: any) => {
     try {
@@ -3352,10 +3515,13 @@ server.tool(
   "rename_multiple_nodes",
   "Batch rename multiple nodes.",
   {
-    renames: z.array(z.object({
-      nodeId: z.string().describe("ID of the node to rename"),
-      name: z.string().describe("New name for the node"),
-    })).describe("Array of renames to apply"),
+    renames: z.preprocess(
+      (val) => typeof val === 'string' ? JSON.parse(val) : val,
+      z.array(z.object({
+        nodeId: z.string().describe("ID of the node to rename"),
+        name: z.string().describe("New name for the node"),
+      }))
+    ).describe("Array of renames to apply"),
   },
   async ({ renames }: any) => {
     try {
@@ -3388,7 +3554,7 @@ server.tool(
     styleType: z.enum(["TEXT", "PAINT", "EFFECT", "GRID"]),
     styleId: z.string().optional().describe("Style ID to apply"),
     styleName: z.string().optional().describe("Style name to apply (alternative to styleId)"),
-    nodeIds: z.array(z.string()),
+    nodeIds: zStringArray,
     property: z.enum(["fills", "strokes"]).optional().describe("For PAINT styles only"),
   },
   async ({ styleType, styleId, styleName, nodeIds, property }: any) => {
@@ -4170,7 +4336,7 @@ server.tool(
   "get_reactions",
   "Get prototype interactions from nodes.",
   {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
+    nodeIds: zStringArray.describe("Array of node IDs to get reactions from"),
   },
   async ({ nodeIds }: any) => {
     try {
@@ -4302,7 +4468,7 @@ server.tool(
   "set_selections",
   "Select multiple nodes and scroll to show them.",
   {
-    nodeIds: z.array(z.string()),
+    nodeIds: zStringArray,
   },
   async ({ nodeIds }: any) => {
     try {
@@ -4857,100 +5023,110 @@ async function joinChannel(channelName: string): Promise<void> {
 }
 
 // Function to send commands to Figma with auto-join support
-function sendCommandToFigma(
+async function sendCommandToFigma(
   command: FigmaCommand,
   params: unknown = {},
   timeoutMs?: number
 ): Promise<unknown> {
-  return new Promise(async (resolve, reject) => {
-    // If not connected, try to connect first
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      connectToFigma();
-      reject(new Error("Not connected to Figma. Attempting to connect..."));
-      return;
-    }
+  // If not connected, try to connect first
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    connectToFigma();
+    throw new Error("Not connected to Figma. Attempting to connect...");
+  }
 
-    // Check if we need a channel for this command
-    const requiresChannel = command !== "join";
-    if (requiresChannel && !currentChannel) {
-      // First, try environment variable if set
-      if (DEFAULT_CHANNEL) {
-        try {
-          await joinChannelInternal(DEFAULT_CHANNEL);
-          logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
-        } catch (envJoinError) {
-          logger.warn(`Failed to join channel from environment variable: ${envJoinError instanceof Error ? envJoinError.message : String(envJoinError)}`);
-          // Fall through to auto-join logic
-        }
-      }
-      
-      // If still no channel, try to auto-join if only one channel is available
-      if (!currentChannel) {
-        try {
-          logger.info("No channel joined. Attempting auto-join...");
-          await autoJoinChannel();
-          logger.info(`Auto-join successful. Proceeding with command: ${command}`);
-        } catch (autoJoinError) {
-          const channels = await getActiveChannels();
-          let errorMessage = "Must join a channel before sending commands. ";
-          
-          if (channels.length === 0) {
-            errorMessage += "No active channels found. Please start the Figma plugin.";
-          } else if (channels.length > 1) {
-            const channelNames = channels.map(c => c.name).join(', ');
-            errorMessage += `Multiple channels available: ${channelNames}. Use join_channel to specify which one, or set AUTOFIG_CHANNEL environment variable.`;
-          } else {
-            errorMessage += autoJoinError instanceof Error ? autoJoinError.message : String(autoJoinError);
-          }
-          
-          reject(new Error(errorMessage));
-          return;
-        }
+  // Check if we need a channel for this command
+  const requiresChannel = command !== "join";
+  if (requiresChannel && !currentChannel) {
+    // First, try environment variable if set
+    if (DEFAULT_CHANNEL) {
+      try {
+        await joinChannelInternal(DEFAULT_CHANNEL);
+        logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`);
+      } catch (envJoinError) {
+        logger.warn(`Failed to join channel from environment variable: ${envJoinError instanceof Error ? envJoinError.message : String(envJoinError)}`);
+        // Fall through to auto-join logic
       }
     }
 
-    // Use command-specific timeout if not explicitly provided
-    const actualTimeout = timeoutMs ?? getCommandTimeout(command);
+    // If still no channel, try to auto-join if only one channel is available
+    if (!currentChannel) {
+      try {
+        logger.info("No channel joined. Attempting auto-join...");
+        await autoJoinChannel();
+        logger.info(`Auto-join successful. Proceeding with command: ${command}`);
+      } catch (autoJoinError) {
+        const channels = await getActiveChannels();
+        let errorMessage = "Must join a channel before sending commands. ";
 
-    const id = uuidv4();
-    const request = {
-      id,
-      type: command === "join" ? "join" : "message",
-      ...(command === "join"
-        ? { channel: (params as Record<string, unknown>).channel }
-        : { channel: currentChannel }),
-      message: {
+        if (channels.length === 0) {
+          errorMessage += "No active channels found. Please start the Figma plugin.";
+        } else if (channels.length > 1) {
+          const channelNames = channels.map(c => c.name).join(', ');
+          errorMessage += `Multiple channels available: ${channelNames}. Use join_channel to specify which one, or set AUTOFIG_CHANNEL environment variable.`;
+        } else {
+          errorMessage += autoJoinError instanceof Error ? autoJoinError.message : String(autoJoinError);
+        }
+
+        throw new Error(errorMessage);
+      }
+    }
+  }
+
+  // Use command-specific timeout if not explicitly provided
+  const actualTimeout = timeoutMs ?? getCommandTimeout(command);
+
+  // Inner dispatch — creates the request and waits for Figma's response.
+  // ID and timeout are assigned here so the clock starts at actual dispatch time.
+  const dispatchCommand = (channel: string | null) =>
+    new Promise<unknown>((resolve, reject) => {
+      const id = uuidv4();
+      const request = {
         id,
-        command,
-        params: {
-          ...(params as Record<string, unknown>),
-          commandId: id, // Include the command ID in params
+        type: command === "join" ? "join" : "message",
+        ...(command === "join"
+          ? { channel: (params as Record<string, unknown>).channel }
+          : { channel }),
+        message: {
+          id,
+          command,
+          params: {
+            ...(params as Record<string, unknown>),
+            commandId: id, // Include the command ID in params
+          },
         },
-      },
-    };
+      };
 
-    // Set timeout for request (using command-specific timeout)
-    const timeout = setTimeout(() => {
-      if (pendingRequests.has(id)) {
-        pendingRequests.delete(id);
-        logger.error(`Request ${id} (${command}) timed out after ${actualTimeout / 1000} seconds`);
-        reject(new Error(`Request to Figma timed out after ${actualTimeout / 1000} seconds`));
-      }
-    }, actualTimeout);
+      // Set timeout for request (using command-specific timeout)
+      const timeout = setTimeout(() => {
+        if (pendingRequests.has(id)) {
+          pendingRequests.delete(id);
+          logger.error(`Request ${id} (${command}) timed out after ${actualTimeout / 1000} seconds`);
+          reject(new Error(`Request to Figma timed out after ${actualTimeout / 1000} seconds`));
+        }
+      }, actualTimeout);
 
-    // Store the promise callbacks to resolve/reject later
-    pendingRequests.set(id, {
-      resolve,
-      reject,
-      timeout,
-      lastActivity: Date.now()
+      // Store the promise callbacks to resolve/reject later
+      pendingRequests.set(id, {
+        resolve,
+        reject,
+        timeout,
+        lastActivity: Date.now(),
+      });
+
+      // Send the request
+      logger.info(`Sending command to Figma: ${command} (timeout: ${actualTimeout / 1000}s)`);
+      logger.debug(`Request details: ${JSON.stringify(request)}`);
+      ws.send(JSON.stringify(request));
     });
 
-    // Send the request
-    logger.info(`Sending command to Figma: ${command} (timeout: ${actualTimeout / 1000}s)`);
-    logger.debug(`Request details: ${JSON.stringify(request)}`);
-    ws.send(JSON.stringify(request));
-  });
+  // join commands bypass the channel queue (they establish the channel)
+  if (command === "join") {
+    return dispatchCommand(null);
+  }
+
+  // Capture channel at enqueue time; serialize commands per channel
+  const channel = currentChannel!;
+  return enqueueChannelTask(channel, () => dispatchCommand(channel));
 }
 
 // Start the server
@@ -4967,6 +5143,13 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info('FigmaMCP server running on stdio');
+
+  // Notify client to refresh tool list (critical for bun --watch restarts)
+  try {
+    server.sendToolListChanged();
+  } catch {
+    // Client may not be connected yet on first start — safe to ignore
+  }
 }
 
 // Run the server
