@@ -667,8 +667,10 @@ export async function moveToFront(params: CommandParams['move_to_front']): Promi
     );
   }
 
-  const maxIndex = (parent as ChildrenMixin).children.length - 1;
-  (parent as ChildrenMixin).insertChild(maxIndex, node as SceneNode);
+  // Use children.length (not length-1) because insertChild(i, node) inserts
+  // BEFORE children[i]. Using length appends after all siblings.
+  const length = (parent as ChildrenMixin).children.length;
+  (parent as ChildrenMixin).insertChild(length, node as SceneNode);
 
   // Provide visual feedback
   provideVisualFeedback(node, `✅ Moved to front: ${node.name}`);
@@ -770,7 +772,9 @@ export async function moveForward(params: CommandParams['move_forward']): Promis
     };
   }
 
-  const newIndex = currentIndex + 1;
+  // Use currentIndex + 2 because insertChild(i, node) inserts BEFORE children[i].
+  // To move forward one step, we need to insert before the element two ahead.
+  const newIndex = currentIndex + 2;
   (parent as ChildrenMixin).insertChild(newIndex, node as SceneNode);
 
   // Provide visual feedback

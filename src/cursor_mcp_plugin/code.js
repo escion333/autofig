@@ -1713,7 +1713,7 @@ The node may have been deleted or the ID is invalid.
     } else if (radius !== void 0) {
       cornerNode.cornerRadius = radius;
     }
-    provideVisualFeedback(node, `\u2705 Updated corner radius: ${node.name}`);
+    provideVisualFeedback(node, `\u2705 Updated corner radius: ${node.name}`, { skipSelection: true });
     return {
       id: node.id,
       name: node.name,
@@ -3151,7 +3151,7 @@ The node may have been deleted or the ID is invalid.
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "effectStyleId", `Node "${node.name}" does not support effect styles`);
     await node.setEffectStyleIdAsync(style.id);
-    provideVisualFeedback(node, `\u2705 Applied effect style "${style.name}" to ${node.name}`);
+    provideVisualFeedback(node, `\u2705 Applied effect style "${style.name}" to ${node.name}`, { skipSelection: true });
     return {
       success: true,
       nodeId: node.id,
@@ -3166,12 +3166,16 @@ The node may have been deleted or the ID is invalid.
     if (!styleId) {
       throw new Error("Missing styleId parameter");
     }
-    const style = figma.getStyleById(styleId);
+    let style = null;
+    const found = await figma.getStyleByIdAsync(styleId);
+    if (found && found.type === "EFFECT") {
+      style = found;
+    } else {
+      const allStyles = await figma.getLocalEffectStylesAsync();
+      style = allStyles.find((s) => s.id === styleId) || null;
+    }
     if (!style) {
       throw new Error(`Effect style not found: ${styleId}`);
-    }
-    if (style.type !== "EFFECT") {
-      throw new Error(`Style is not an effect style: ${styleId} (type: ${style.type})`);
     }
     const styleName = style.name;
     style.remove();
@@ -3810,8 +3814,8 @@ The node may have been deleted or the ID is invalid.
 \u{1F4A1} Tip: Node must be inside a frame, group, or page.`
       );
     }
-    const maxIndex = parent.children.length - 1;
-    parent.insertChild(maxIndex, node);
+    const length = parent.children.length;
+    parent.insertChild(length, node);
     provideVisualFeedback(node, `\u2705 Moved to front: ${node.name}`);
     return {
       id: node.id,
@@ -3884,7 +3888,7 @@ The node may have been deleted or the ID is invalid.
         parentId: parent.id
       };
     }
-    const newIndex = currentIndex + 1;
+    const newIndex = currentIndex + 2;
     parent.insertChild(newIndex, node);
     provideVisualFeedback(node, `\u2705 Moved forward: ${node.name}`);
     return {

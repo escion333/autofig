@@ -168,7 +168,7 @@ export async function setCornerRadius(params: CommandParams['set_corner_radius']
   }
 
   // Provide visual feedback
-  provideVisualFeedback(node, `✅ Updated corner radius: ${node.name}`);
+  provideVisualFeedback(node, `✅ Updated corner radius: ${node.name}`, { skipSelection: true });
 
   return {
     id: node.id,

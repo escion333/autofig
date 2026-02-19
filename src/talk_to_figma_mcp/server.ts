@@ -1352,14 +1352,20 @@ registerTool(
         format: format || "PNG",
         scale: scale || 1,
       });
-      const typedResult = result as { imageData: string; mimeType: string };
+      const typedResult = result as { data: string; format: string; mimeType?: string };
+      const mimeType = typedResult.mimeType || (
+        typedResult.format === "JPG" ? "image/jpeg" :
+        typedResult.format === "SVG" ? "image/svg+xml" :
+        typedResult.format === "PDF" ? "application/pdf" :
+        "image/png"
+      );
 
       return {
         content: [
           {
             type: "image",
-            data: typedResult.imageData,
-            mimeType: typedResult.mimeType || "image/png",
+            data: typedResult.data,
+            mimeType,
           },
         ],
       };

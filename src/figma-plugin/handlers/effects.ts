@@ -225,7 +225,7 @@ export async function applyEffectStyle(
   await ((node as SceneNode) as MinimalBlendMixin & { setEffectStyleIdAsync(id: string): Promise<void> }).setEffectStyleIdAsync(style.id);
 
   // Provide visual feedback
-  provideVisualFeedback(node, `✅ Applied effect style "${style.name}" to ${node.name}`);
+  provideVisualFeedback(node, `✅ Applied effect style "${style.name}" to ${node.name}`, { skipSelection: true });
 
   return {
     success: true,
@@ -252,15 +252,18 @@ export async function deleteEffectStyle(
     throw new Error('Missing styleId parameter');
   }
 
-  // Get the style
-  const style = figma.getStyleById(styleId) as EffectStyle | null;
+  // Try async lookup by ID, fall back to scanning local effect styles
+  let style: EffectStyle | null = null;
+  const found = await figma.getStyleByIdAsync(styleId);
+  if (found && found.type === 'EFFECT') {
+    style = found as EffectStyle;
+  } else {
+    const allStyles = await figma.getLocalEffectStylesAsync();
+    style = allStyles.find((s) => s.id === styleId) || null;
+  }
 
   if (!style) {
     throw new Error(`Effect style not found: ${styleId}`);
-  }
-
-  if (style.type !== 'EFFECT') {
-    throw new Error(`Style is not an effect style: ${styleId} (type: ${style.type})`);
   }
 
   const styleName = style.name;
