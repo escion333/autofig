@@ -248,6 +248,63 @@ function getNodeWriteLock(nodeId: string): Mutex {
   return lock;
 }
 
+// ── Broker-level lock helpers ──────────────────────────────────────────────
+
+const WebSocketOPEN = 1; // WebSocket.OPEN numeric value
+
+async function acquireBrokerLock(
+  lockType: "node" | "doc",
+  nodeId?: string,
+  ttl: number = 60_000
+): Promise<void> {
+  if (!ws || ws.readyState !== WebSocketOPEN) {
+    throw new Error("Cannot acquire lock: not connected");
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const id = uuidv4();
+
+    const timeout = setTimeout(() => {
+      pendingRequests.delete(id);
+      reject(new Error(`Broker lock acquire timed out: ${lockType} ${nodeId ?? "doc"}`));
+    }, 10_000);
+
+    pendingRequests.set(id, {
+      resolve: (_value: unknown) => {
+        resolve();
+      },
+      reject,
+      timeout,
+      lastActivity: Date.now(),
+    });
+
+    ws!.send(
+      JSON.stringify({
+        type: "lock:acquire",
+        id,
+        agentId: AGENT_ID,
+        lockType,
+        ...(nodeId ? { nodeId } : {}),
+        ttl,
+      })
+    );
+  });
+}
+
+function releaseBrokerLock(lockType: "node" | "doc", nodeId?: string): void {
+  if (!ws || ws.readyState !== WebSocketOPEN) return;
+
+  ws!.send(
+    JSON.stringify({
+      type: "lock:release",
+      id: uuidv4(),
+      agentId: AGENT_ID,
+      lockType,
+      ...(nodeId ? { nodeId } : {}),
+    })
+  );
+}
+
 /**
  * Dispatch a command with the appropriate concurrency strategy.
  * Replaces the old per-channel serial queue.
@@ -290,18 +347,45 @@ async function enqueueChannelTask<T>(
 
   // Doc-wide writes: serialize with global doc lock
   if (DOC_WIDE_WRITES.has(command as string)) {
+    let brokerLockAcquired = false;
+    try {
+      await acquireBrokerLock("doc");
+      brokerLockAcquired = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("Lock denied:")) {
+        throw new Error(
+          `Write conflict: document is locked by another agent. Please retry in a moment.`
+        );
+      }
+      console.error(`[lock] Broker doc lock unavailable, proceeding with local lock only: ${msg}`);
+    }
     await docWriteMutex.lock();
     checkTimeout();
     try {
       return await task();
     } finally {
       docWriteMutex.release();
+      if (brokerLockAcquired) releaseBrokerLock("doc");
     }
   }
 
   // Per-node writes: serialize per nodeId so different nodes can run concurrently
   const nodeId = (params as Record<string, unknown>)?.nodeId as string | undefined;
   if (nodeId) {
+    let brokerLockAcquired = false;
+    try {
+      await acquireBrokerLock("node", nodeId);
+      brokerLockAcquired = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("Lock denied:")) {
+        throw new Error(
+          `Write conflict: node ${nodeId} is currently being modified by another agent. Please retry in a moment.`
+        );
+      }
+      console.error(`[lock] Broker node lock unavailable for ${nodeId}, proceeding with local lock only: ${msg}`);
+    }
     const lock = getNodeWriteLock(nodeId);
     await lock.lock();
     checkTimeout();
@@ -313,21 +397,44 @@ async function enqueueChannelTask<T>(
       if (lock.isIdle && nodeWriteLocks.get(nodeId) === lock) {
         nodeWriteLocks.delete(nodeId);
       }
+      if (brokerLockAcquired) releaseBrokerLock("node", nodeId);
     }
   }
 
   // Fallback: doc-wide lock for commands with no nodeId (e.g. batch ops)
+  let brokerLockAcquired = false;
+  try {
+    await acquireBrokerLock("doc");
+    brokerLockAcquired = true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.startsWith("Lock denied:")) {
+      throw new Error(
+        `Write conflict: document is locked by another agent. Please retry in a moment.`
+      );
+    }
+    console.error(`[lock] Broker doc lock unavailable (fallback path), proceeding with local lock only: ${msg}`);
+  }
   await docWriteMutex.lock();
   checkTimeout();
   try {
     return await task();
   } finally {
     docWriteMutex.release();
+    if (brokerLockAcquired) releaseBrokerLock("doc");
   }
 }
 
 // Check for channel from environment variable
 const DEFAULT_CHANNEL = process.env.AUTOFIG_CHANNEL || "autofig";
+
+// Agent identity for multi-agent directed routing
+const AGENT_ID = process.env.AUTOFIG_AGENT_ID || `agent-${uuidv4().slice(0, 8)}`;
+const AGENT_CHANNEL = AGENT_ID;  // private reply channel
+const BRIDGE_CHANNEL = process.env.AUTOFIG_BRIDGE_CHANNEL || "figma-bridge";
+
+// Log to stderr — stdout is the MCP transport
+console.error(`[autofig] Agent ${AGENT_ID} starting, reply channel: ${AGENT_CHANNEL}`);
 
 // Reconnection state
 let reconnectAttempts = 0;
@@ -5127,18 +5234,45 @@ function connectToFigma(port: number = 3055) {
 
   ws.on('open', async () => {
     logger.info('Connected to Figma socket server');
-    // Reset reconnection state on successful connection
     reconnectAttempts = 0;
-    // Reset channel on new connection
     currentChannel = null;
-    
-    // Auto-join channel from environment variable if set
-    if (DEFAULT_CHANNEL) {
-      joiningChannel = joinChannelInternal(DEFAULT_CHANNEL)
-        .then(() => { logger.info(`Auto-joined channel from environment variable: ${DEFAULT_CHANNEL}`); })
-        .catch((error) => { logger.warn(`Failed to auto-join channel from environment variable: ${error instanceof Error ? error.message : String(error)}`); })
-        .finally(() => { joiningChannel = null; });
-      await joiningChannel;
+
+    try {
+      // Join the bridge channel (plugin listens here for commands)
+      await joinChannelInternal(BRIDGE_CHANNEL);
+      logger.info(`Joined bridge channel: ${BRIDGE_CHANNEL}`);
+
+      // Join our private reply channel (plugin sends directed responses here)
+      await joinChannelInternal(AGENT_CHANNEL);
+      logger.info(`Joined private reply channel: ${AGENT_CHANNEL}`);
+
+      // Register with the broker (silently ignored by older brokers)
+      ws!.send(JSON.stringify({
+        type: "agent:register",
+        agentId: AGENT_ID,
+        channel: AGENT_CHANNEL,
+        mode: "read-write",
+      }));
+
+      // Commands go to bridge — override currentChannel set by joinChannelInternal
+      currentChannel = BRIDGE_CHANNEL;
+      logger.info(`Agent ${AGENT_ID} ready on bridge channel: ${BRIDGE_CHANNEL}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn(`Failed to join bridge/reply channels: ${msg}`);
+
+      // Fallback: join DEFAULT_CHANNEL for backward compatibility with old setups
+      if (DEFAULT_CHANNEL) {
+        logger.info(`Falling back to DEFAULT_CHANNEL: ${DEFAULT_CHANNEL}`);
+        joiningChannel = joinChannelInternal(DEFAULT_CHANNEL)
+          .then(() => { logger.info(`Joined fallback channel: ${DEFAULT_CHANNEL}`); })
+          .catch((err: unknown) => {
+            const m = err instanceof Error ? err.message : String(err);
+            logger.warn(`Failed to join fallback channel: ${m}`);
+          })
+          .finally(() => { joiningChannel = null; });
+        await joiningChannel;
+      }
     }
   });
 
@@ -5178,6 +5312,32 @@ function connectToFigma(port: number = 3055) {
             logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
           }
         }
+        return;
+      }
+
+      // Broker lock protocol — these messages arrive at the top level (not nested under .message)
+      if (json.type === "lock:acquired" && json.id && pendingRequests.has(json.id)) {
+        const req = pendingRequests.get(json.id)!;
+        clearTimeout(req.timeout);
+        pendingRequests.delete(json.id);
+        req.resolve(json);
+        return;
+      }
+
+      if (json.type === "lock:denied" && json.id && pendingRequests.has(json.id)) {
+        const req = pendingRequests.get(json.id)!;
+        clearTimeout(req.timeout);
+        pendingRequests.delete(json.id);
+        const where = json.nodeId ? `node ${json.nodeId}` : "document";
+        const reason = json.reason ? ` (${json.reason})` : "";
+        req.reject(
+          new Error(`Lock denied: ${where} held by ${json.heldBy}${reason}`)
+        );
+        return;
+      }
+
+      if (json.type === "lock:released") {
+        // Fire-and-forget confirmation — nothing to do
         return;
       }
 
@@ -5360,6 +5520,7 @@ async function sendCommandToFigma(
             ...(params as Record<string, unknown>),
             commandId: id, // Include the command ID in params
           },
+          replyTo: AGENT_CHANNEL,  // plugin routes response to this agent's private channel
         },
       };
 

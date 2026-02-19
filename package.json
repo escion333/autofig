@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "bun test src/test/",
     "pub:release": "bun run build && npm publish",
     "restart:mcp": "pkill -f 'bun.*server\\.ts' 2>/dev/null || true"
   },

@@ -7,8 +7,7 @@ This guide provides quick-reference patterns for AI agents working on this codeb
 ## Quick Start Checklist
 
 Before making changes:
-- [ ] Check **TODO.md** for prioritized tasks and what to work on
-- [ ] Read `ANALYSIS_REPORT.md` for current state and architecture
+- [ ] Read `PRD.md` for requirements and current state
 - [ ] Run `bun test` to ensure tests pass before changes
 - [ ] Understand the three-component architecture (MCP Server ↔ WebSocket ↔ Plugin)
 - [ ] Reference `PRD.md` for detailed requirements if needed
@@ -89,7 +88,7 @@ export interface CommandParams {
 **File:** `src/talk_to_figma_mcp/server.ts`
 
 ```typescript
-server.tool(
+registerTool(
   "your_new_command",
   "Clear description of what this tool does - be specific!",
   {
@@ -342,16 +341,22 @@ color: z.object({
 bun run build
 ```
 
-### 2. Start WebSocket server
+### 2. Run unit tests
+```bash
+bun test                    # vitest unit tests (tests/ directory)
+bun run test:integration    # integration tests against a real broker (src/test/)
+```
+
+### 3. Start WebSocket server
 ```bash
 bun socket
 ```
 
-### 3. Restart your AI editor to reload MCP
+### 4. Restart your AI editor to reload MCP
 
-### 4. Open Figma, run plugin, connect
+### 5. Open Figma, run plugin, connect
 
-### 5. Test tool via chat:
+### 6. Test tool via chat:
 ```
 Use the your_new_command tool with requiredParam="test"
 ```
@@ -432,9 +437,7 @@ docs: update PRD with variables API specs
 ## Questions?
 
 Check these resources:
-1. **TODO.md** - Prioritized tasks for future work
-2. `ANALYSIS_REPORT.md` - Current state and architecture
-3. `PRD.md` - Full requirements and specifications
-4. [Figma Plugin API Docs](https://www.figma.com/plugin-docs/api/api-reference/)
-5. [MCP Specification](https://modelcontextprotocol.io/)
+1. `PRD.md` - Full requirements and specifications
+2. [Figma Plugin API Docs](https://www.figma.com/plugin-docs/api/api-reference/)
+3. [MCP Specification](https://modelcontextprotocol.io/)
 

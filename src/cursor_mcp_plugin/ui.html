@@ -453,6 +453,7 @@
         socket: null,
         serverPort: 3055,
         pendingRequests: new Map(),
+        pendingReplies: new Map(),   // requestId → replyToChannel
         channel: null,
         savedChannel: null, // Persisted channel name from plugin storage
         reconnectAttempts: 0,
@@ -570,6 +571,15 @@
                 channel: channelName.trim(),
               })
             );
+
+            // figma-bridge: receive agent:registered notifications + send directed responses
+            if (channelName !== "figma-bridge") {
+              state.socket.send(JSON.stringify({
+                type: "join",
+                channel: "figma-bridge",
+                id: crypto.randomUUID(),
+              }));
+            }
           };
 
           state.socket.onmessage = (event) => {
@@ -727,7 +737,13 @@
           try {
             // Show activity
             showActivity();
-            
+
+            // Multi-agent: store where to route the response
+            if (data.replyTo) {
+              state.pendingReplies.set(data.id, data.replyTo);
+              setTimeout(() => state.pendingReplies.delete(data.id), 300_000);
+            }
+
             // Send the command to the plugin code
             parent.postMessage(
               {
@@ -829,6 +845,19 @@
             },
           })
         );
+      }
+
+      // Send directed response to a specific agent channel
+      function sendDirectedResponse(id, command, result, error, targetChannel) {
+        if (!state.connected || !state.socket) return;
+        const payload = { id, command };
+        if (error !== null && error !== undefined) payload.error = error;
+        else payload.result = result;
+        state.socket.send(JSON.stringify({
+          type: "directed",
+          targetChannel,
+          message: payload,
+        }));
       }
 
       // Helper to generate unique IDs
@@ -1123,26 +1152,30 @@
           case "auto-disconnect":
             disconnectButton.click();
             break;
-          case "command-result":
-            // Hide activity
+          case "command-result": {
             hideActivity();
-            
-            // Add to history
             addCommandToHistory(message.command || "Unknown command", true);
-            
-            // Forward the result from plugin code back to WebSocket
-            sendSuccessResponse(message.id, message.result);
+            const replyTo = state.pendingReplies.get(message.id);
+            state.pendingReplies.delete(message.id);
+            if (replyTo) {
+              sendDirectedResponse(message.id, message.command, message.result, null, replyTo);
+            } else {
+              sendSuccessResponse(message.id, message.result);
+            }
             break;
-          case "command-error":
-            // Hide activity
+          }
+          case "command-error": {
             hideActivity();
-            
-            // Add to history
             addCommandToHistory(message.command || "Unknown command", false, message.error);
-            
-            // Forward the error from plugin code back to WebSocket
-            sendErrorResponse(message.id, message.error);
+            const replyTo = state.pendingReplies.get(message.id);
+            state.pendingReplies.delete(message.id);
+            if (replyTo) {
+              sendDirectedResponse(message.id, message.command, null, message.error, replyTo);
+            } else {
+              sendErrorResponse(message.id, message.error);
+            }
             break;
+          }
           case "command_progress":
             // Update UI with progress information
             updateProgressUI(message);

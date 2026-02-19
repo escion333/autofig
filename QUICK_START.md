@@ -219,7 +219,7 @@ bun run dev:server
 
 - 📖 Read the full [README.md](./readme.md) for detailed documentation
 - 🛠️ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines
-- 📋 Check [TODO.md](./TODO.md) for planned features
+- 📋 Read [PRD.md](./PRD.md) for planned features and requirements
 - 🧪 Run tests with `bun test`
 
 ---

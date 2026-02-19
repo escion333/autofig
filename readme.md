@@ -3,8 +3,8 @@
 > **Model Context Protocol (MCP) server for Figma** - Let any AI agent read, create, and modify Figma designs
 
 [![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen.svg)](./tests)
-[![Tools](https://img.shields.io/badge/MCP%20tools-101-purple.svg)](#mcp-tools)
+[![Tests](https://img.shields.io/badge/tests-130%20passing-brightgreen.svg)](./tests)
+[![Tools](https://img.shields.io/badge/MCP%20tools-120-purple.svg)](#mcp-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 AutoFig enables AI agents to read, create, and modify Figma designs programmatically through the [Model Context Protocol](https://modelcontextprotocol.io/). Works with any MCP-compatible client — Claude Code, Cursor, Windsurf, Cline, and more.
@@ -154,6 +154,14 @@ Once set up, using AutoFig is simple:
 - "Export the selected frame as PNG"
 
 > 💡 **Tip:** Run `bun connect` anytime to check connection status
+
+## Multi-Agent Usage
+
+1. Start the broker: `bun run src/socket.ts`
+2. Open Figma plugin (it auto-joins `figma-bridge`)
+3. Start N MCP servers — each gets a unique agent ID automatically
+4. Each agent works independently; write locks prevent collisions
+5. Monitor: `curl localhost:3055/status` shows connected agents and locks
 
 ## MCP Tools
 
@@ -308,8 +316,9 @@ When working with the Figma MCP:
 |----------|---------|
 | [QUICK_START.md](./QUICK_START.md) | Get running in 3 minutes |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | Guide for AI agents and developers |
-| [TODO.md](./TODO.md) | Prioritized improvement tasks for contributors |
 | [PRD.md](./PRD.md) | Product requirements and specifications |
+| [docs/SETUP_GUIDE_FOR_AI_AGENTS.md](./docs/SETUP_GUIDE_FOR_AI_AGENTS.md) | Detailed setup guide for AI-assisted workflows |
+| [docs/MIGRATION_GUIDE.md](./docs/MIGRATION_GUIDE.md) | Upgrade instructions for existing users |
 
 ## License
 

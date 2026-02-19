@@ -5,6 +5,48 @@ All notable changes to AutoFig will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Multi-Agent Broker** (`src/socket.ts`)
+  - Directed message routing: agents include `replyTo` in commands; plugin sends responses directly to the requesting agent's private channel via `type:"directed"`
+  - Agent registry: `agent:register` / `agent:disconnected` lifecycle messages broadcast on `figma-bridge` channel; `/status` endpoint reports active agents
+  - Write-lock coordination: `lock:acquire` / `lock:release` / `lock:denied` messages for both node-level (`lockType:"node"`) and document-level (`lockType:"doc"`) locks
+  - Lock expiry sweep every 5 s with per-lock TTL
+  - `PORT` env var support (`Number(process.env.PORT) || 3055`) for running isolated test brokers
+
+- **Integration Test Suite** (`src/test/multi-agent-integration.test.ts`, `bun:test`)
+  - 6 tests: directed routing, legacy single-agent compat, lock acquire/deny/release cycle, doc lock blocking node locks, disconnect releases locks, agent registry in `/status`
+  - Spawns a real broker subprocess on port 13055; run with `bun run test:integration`
+
+- **New MCP Tools** (120 total, up from 101)
+  - `update_node` — patch any node property via JSON merge object
+  - `rename_variable`, `set_variable_description`
+  - `create_multiple_variables`, `set_multiple_variable_values`, `bind_multiple_variables`
+  - `rename_node`, `rename_multiple_nodes`
+  - `scan_nodes_by_types`
+  - `create_component_set`, `create_multiple_component_instances`
+  - `get_component_properties`, `add_component_property`, `edit_component_property`, `delete_component_property`
+  - `set_component_property_references`, `set_multiple_component_property_references`, `set_component_property_value`
+  - `VARIABLE_ALIAS` value type in `set_variable_value` and `set_multiple_variable_values`
+
+- **MCP server auto-restart** on file changes during development
+- **WebSocket keepalive** — `ws.ping()` every 30 s to prevent silent TCP connection drops
+
+### Fixed
+
+- `move_to_front` / `move_forward` off-by-one: Figma's `insertChild(i)` inserts *before* index `i`; corrected to `insertChild(length)` and `insertChild(currentIndex + 2)` respectively
+- `apply_text_style`, `get_text_styles`, `apply_effect_style`, `apply_grid_style`, `delete_effect_style`, `delete_grid_style` — all migrated to async Figma style APIs
+- `set_layout_sizing` — now works on TEXT children of auto-layout frames
+- `resize_node`, `set_corner_radius` — no longer fail on nodes inside component variants (`provideVisualFeedback` now accepts `{ skipSelection: true }`)
+- `bind_variable` on `fills` / `strokes` — uses `figma.variables.setBoundVariableForPaint()` at the paint level; auto-creates a default solid fill on VECTOR nodes with empty paints array
+- `scan_nodes_by_types` — fixed param name mismatch (`nodeId` → `parentNodeId`)
+- Broker disconnect handler now releases locks held by agents that used `lock:acquire` without `agent:register`
+- `lineHeight` Zod schema in `create_text_style` and `set_text_properties` — uses `z.preprocess()` to handle string-encoded numbers from MCP transport
+
+---
+
 ## [0.4.0] - 2024-12-06
 
 ### 🎉 Major Connection Improvements
@@ -38,7 +80,7 @@ This release completely redesigns the connection workflow to make AutoFig simple
 - **Documentation**
   - `QUICK_START.md` - Complete walkthrough for new users
   - `docs/MIGRATION_GUIDE.md` - Upgrade guide for existing users
-  - `CONNECTION_IMPROVEMENTS.md` - Detailed technical documentation
+  - `docs/SETUP_GUIDE_FOR_AI_AGENTS.md` - Detailed technical documentation
 
 ### Changed
 
@@ -76,7 +118,7 @@ This release completely redesigns the connection workflow to make AutoFig simple
 - `scripts/connect.mjs` - Connection diagnostics tool
 - `QUICK_START.md` - User-friendly quick start guide
 - `docs/MIGRATION_GUIDE.md` - Migration instructions
-- `CONNECTION_IMPROVEMENTS.md` - Technical documentation
+- `docs/SETUP_GUIDE_FOR_AI_AGENTS.md` - Technical documentation
 
 **Modified Files:**
 - `src/socket.ts` - Added `/health` and `/status` endpoints

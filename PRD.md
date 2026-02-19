@@ -130,7 +130,7 @@ Unlike simple Figma plugins, this project enables **agentic workflows** where AI
 | Hardcoded 30s timeout | Failures on large docs | High | 🔶 TODO |
 | No reconnection logic | Connection drops | High | 🔶 TODO |
 
-**See TODO.md for detailed improvement tasks.**
+**See CHANGELOG.md for completed work and ongoing improvements.**
 
 ---
 
