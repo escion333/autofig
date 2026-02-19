@@ -2,7 +2,7 @@
 
 > **Model Context Protocol (MCP) server for Figma** - Let any AI agent read, create, and modify Figma designs
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](./CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-130%20passing-brightgreen.svg)](./tests)
 [![Tools](https://img.shields.io/badge/MCP%20tools-120-purple.svg)](#mcp-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
