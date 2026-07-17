@@ -408,7 +408,15 @@ async function bindVariableToNode(
       throw new Error(`Node type ${node.type} does not support ${field}`);
     }
     const paintNode = node as SceneNode & { fills: Paint[]; strokes: Paint[] };
-    const paints = [...(paintNode[field] as Paint[])];
+    // node.fills may be figma.mixed for TEXT nodes with mixed character styles
+    const rawPaints = paintNode[field];
+    let paints: Paint[];
+    if (rawPaints === figma.mixed || !Array.isArray(rawPaints)) {
+      // Mixed or non-iterable — start fresh with a single solid fill
+      paints = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true } as SolidPaint];
+    } else {
+      paints = [...(rawPaints as Paint[])];
+    }
     if (paints.length === 0) {
       // Auto-create a default solid fill so we can bind the variable
       paints.push({ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true } as SolidPaint);
@@ -500,9 +508,19 @@ export async function unbindVariable(
     throw new Error(`Node type ${node.type} does not support variable binding`);
   }
 
-  // Unbind by setting to null
-  const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable | null) => void };
-  bindableNode.setBoundVariable(field as VariableBindableNodeField, null);
+  // Typography fields require TextNode
+  const textFields = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'paragraphSpacing', 'paragraphIndent'];
+  if (textFields.includes(field)) {
+    if (node.type !== 'TEXT') {
+      throw new Error(`Field '${field}' can only be unbound on TEXT nodes, got ${node.type}`);
+    }
+    const textNode = node as TextNode;
+    textNode.setBoundVariable(field as VariableBindableTextField, null);
+  } else {
+    // Unbind by setting to null
+    const bindableNode = node as SceneNode & { setBoundVariable: (field: string, variable: Variable | null) => void };
+    bindableNode.setBoundVariable(field as VariableBindableNodeField, null);
+  }
 
   return {
     success: true,
@@ -954,5 +972,75 @@ function serializeVariableValue(value: unknown): unknown {
     };
   }
   return value;
+}
+
+// =============================================================================
+// Explicit Variable Modes
+// =============================================================================
+
+/**
+ * Get the explicit variable mode overrides on a node (frame or section)
+ */
+export async function getExplicitVariableModes(
+  params: CommandParams['get_explicit_variable_modes']
+): Promise<{
+  nodeId: string;
+  name: string;
+  type: string;
+  explicitVariableModes: Record<string, string>;
+}> {
+  const { nodeId } = params;
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  const modes: Record<string, string> = (node as any).explicitVariableModes ?? {};
+
+  return {
+    nodeId: node.id,
+    name: node.name,
+    type: node.type,
+    explicitVariableModes: modes,
+  };
+}
+
+/**
+ * Set or clear an explicit variable mode override on a node.
+ * Pass modeId=null to clear the override for the given collection.
+ */
+export async function setExplicitVariableModes(
+  params: CommandParams['set_explicit_variable_modes']
+): Promise<{
+  success: boolean;
+  nodeId: string;
+  collectionId: string;
+  modeId: string | null;
+}> {
+  const { nodeId, collectionId, modeId } = params;
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found: ${nodeId}`);
+  }
+
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) {
+    throw new Error(`Variable collection not found: ${collectionId}`);
+  }
+
+  if (modeId === null) {
+    (node as any).clearExplicitVariableModeForCollection(collection);
+  } else {
+    (node as any).setExplicitVariableModeForCollection(collection, modeId);
+  }
+
+  return {
+    success: true,
+    nodeId: node.id,
+    collectionId,
+    modeId,
+  };
 }
 

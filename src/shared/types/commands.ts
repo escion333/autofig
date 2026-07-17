@@ -31,6 +31,7 @@ export type FigmaCommand =
   // Element Creation
   | 'create_rectangle'
   | 'create_frame'
+  | 'create_section'
   | 'create_text'
   | 'create_ellipse'
   | 'create_polygon'
@@ -43,6 +44,7 @@ export type FigmaCommand =
   | 'outline_stroke'
   // Images
   | 'set_image_fill'
+  | 'create_image_grid'
   // Styling
   | 'set_fill_color'
   | 'set_stroke_color'
@@ -66,6 +68,8 @@ export type FigmaCommand =
   | 'bind_variable'
   | 'bind_multiple_variables'
   | 'unbind_variable'
+  | 'get_explicit_variable_modes'
+  | 'set_explicit_variable_modes'
   // Typography
   | 'get_available_fonts'
   | 'load_font'
@@ -257,6 +261,14 @@ export interface CommandParams {
     nodeId: string;
     field: VariableBindableField;
   };
+  get_explicit_variable_modes: {
+    nodeId: string;
+  };
+  set_explicit_variable_modes: {
+    nodeId: string;
+    collectionId: string;
+    modeId: string | null;
+  };
 
   // Element Creation
   create_rectangle: {
@@ -264,6 +276,14 @@ export interface CommandParams {
     y?: number;
     width?: number;
     height?: number;
+    name?: string;
+    parentId?: string;
+  };
+  create_section: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
     name?: string;
     parentId?: string;
   };
@@ -372,8 +392,20 @@ export interface CommandParams {
   // Images
   set_image_fill: {
     nodeId: string;
-    imageData: string;
+    imageData?: string;
+    imageUrl?: string;
     scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE';
+  };
+  create_image_grid: {
+    images: Array<{ url: string; name?: string }>;
+    columns?: number;
+    columnWidth?: number;
+    gap?: number;
+    frameName?: string;
+    x?: number;
+    y?: number;
+    parentId?: string;
+    backgroundColor?: { r: number; g: number; b: number; a?: number };
   };
 
   // Styling
@@ -977,7 +1009,15 @@ export type VariableBindableField =
   | 'minWidth'
   | 'maxWidth'
   | 'minHeight'
-  | 'maxHeight';
+  | 'maxHeight'
+  | 'fontFamily'
+  | 'fontSize'
+  | 'fontWeight'
+  | 'fontStyle'
+  | 'lineHeight'
+  | 'letterSpacing'
+  | 'paragraphSpacing'
+  | 'paragraphIndent';
 
 export interface VariableModeInfo {
   modeId: string;

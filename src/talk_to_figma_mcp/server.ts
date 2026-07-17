@@ -91,6 +91,10 @@ const COMMAND_TIMEOUTS: Record<string, number> = {
   'scan_text_nodes': 120000,           // 2 minutes - scanning large documents
   'set_multiple_text_contents': 120000, // 2 minutes - batch text updates
   
+  // Image operations - plugin fetches each image over the network
+  'create_image_grid': 300000,         // 5 minutes - fetch + place many images
+  'set_image_fill': 60000,             // 1 minute - single network fetch
+
   // Export operations - can be slow for complex nodes
   'export_node_as_image': 90000,       // 90 seconds - complex exports
   'export_multiple_nodes': 180000,     // 3 minutes - batch exports
@@ -983,6 +987,31 @@ registerTool(
   }
 );
 
+// Create Section Tool
+registerTool(
+  "create_section",
+  "Create a native Figma Section node — an organisational labelled container for grouping frames on the canvas. Sections appear with a title bar in Figma and are ideal for developer handoff organisation.",
+  {
+    x: z.number().describe("X position on the canvas"),
+    y: z.number().describe("Y position on the canvas"),
+    width: z.number().describe("Width of the section"),
+    height: z.number().describe("Height of the section"),
+    name: z.string().optional().describe("Section label displayed in Figma (default: 'Section')"),
+    parentId: z.string().optional().describe("Parent node ID (defaults to current page)"),
+  },
+  async ({ x, y, width, height, name, parentId }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_section", { x, y, width, height, name: name || "Section", parentId });
+      const typedResult = result as { name: string; id: string };
+      return {
+        content: [{ type: "text", text: `Created section "${typedResult.name}" with ID: ${typedResult.id}` }],
+      };
+    } catch (error) {
+      return formatErrorResponse("creating section", error);
+    }
+  }
+);
+
 // Create Text Tool
 registerTool(
   "create_text",
@@ -1118,6 +1147,69 @@ registerTool(
       };
     } catch (error) {
       return formatErrorResponse("setting fill color", error);
+    }
+  }
+);
+
+// Set Image Fill Tool
+registerTool(
+  "set_image_fill",
+  "Fill a node with an image. Provide imageUrl (fetched by the plugin) or base64 imageData.",
+  {
+    nodeId: z.string(),
+    imageUrl: z.string().optional(),
+    imageData: z.string().optional(),
+    scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional(),
+  },
+  async ({ nodeId, imageUrl, imageData, scaleMode }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_image_fill", {
+        nodeId,
+        imageUrl,
+        imageData,
+        scaleMode,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return formatErrorResponse("setting image fill", error);
+    }
+  }
+);
+
+// Create Image Grid Tool
+registerTool(
+  "create_image_grid",
+  "Create a masonry grid of images inside a new frame. Each image is fetched from its URL by the plugin and scaled to columnWidth preserving aspect ratio. Ideal for importing many images at once.",
+  {
+    images: z
+      .array(z.object({ url: z.string(), name: z.string().optional() }))
+      .min(1),
+    columns: z.number().int().positive().optional(),
+    columnWidth: z.number().positive().optional(),
+    gap: z.number().min(0).optional(),
+    frameName: z.string().optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    parentId: z.string().optional(),
+    backgroundColor: z
+      .object({
+        r: z.number().min(0).max(1),
+        g: z.number().min(0).max(1),
+        b: z.number().min(0).max(1),
+        a: z.number().min(0).max(1).optional(),
+      })
+      .optional(),
+  },
+  async (args: any) => {
+    try {
+      const result = await sendCommandToFigma("create_image_grid", args);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return formatErrorResponse("creating image grid", error);
     }
   }
 );
@@ -1860,7 +1952,9 @@ registerTool(
       "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
       "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
       "itemSpacing", "counterAxisSpacing", "opacity",
-      "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight"
+      "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+      "fontFamily", "fontSize", "fontWeight", "fontStyle",
+      "lineHeight", "letterSpacing", "paragraphSpacing", "paragraphIndent"
     ]).describe("The field to unbind the variable from"),
   },
   async ({ nodeId, field }: { nodeId: string; field: string }) => {
@@ -1869,6 +1963,42 @@ registerTool(
       return formatJsonResponse(result);
     } catch (error) {
       return formatErrorResponse("unbinding variable", error);
+    }
+  }
+);
+
+// Get Explicit Variable Modes Tool
+registerTool(
+  "get_explicit_variable_modes",
+  "Get the explicit variable mode overrides locked onto a node (frame or section). Returns the explicitVariableModes map, where keys are collection IDs and values are mode IDs. An empty object means no overrides are set.",
+  {
+    nodeId: z.string().describe("The node ID to inspect"),
+  },
+  async ({ nodeId }: { nodeId: string }) => {
+    try {
+      const result = await sendCommandToFigma("get_explicit_variable_modes", { nodeId });
+      return formatJsonResponse(result);
+    } catch (error) {
+      return formatErrorResponse("getting explicit variable modes", error);
+    }
+  }
+);
+
+// Set Explicit Variable Modes Tool
+registerTool(
+  "set_explicit_variable_modes",
+  "Set or clear a variable mode override on a node (frame or section). Pass modeId=null to remove the override for that collection, restoring it to the document default.",
+  {
+    nodeId: z.string().describe("The node ID to update"),
+    collectionId: z.string().describe("The variable collection ID, e.g. 'VariableCollectionId:12:25'"),
+    modeId: z.string().nullable().describe("The mode ID to apply, e.g. '12:0' for Light Mode. Pass null to clear the override."),
+  },
+  async ({ nodeId, collectionId, modeId }: { nodeId: string; collectionId: string; modeId: string | null }) => {
+    try {
+      const result = await sendCommandToFigma("set_explicit_variable_modes", { nodeId, collectionId, modeId });
+      return formatJsonResponse(result);
+    } catch (error) {
+      return formatErrorResponse("setting explicit variable modes", error);
     }
   }
 );

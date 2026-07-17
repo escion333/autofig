@@ -177,6 +177,7 @@
   }
   __name(readMyDesign, "readMyDesign");
   async function getNodeInfo(params) {
+    var _a, _b, _c, _d;
     const { nodeId } = params;
     if (!nodeId) {
       throw new Error(
@@ -190,6 +191,21 @@
 The node may have been deleted or the ID is invalid.
 \u{1F4A1} Tip: Use get_selection or get_document_info to get valid node IDs.`
       );
+    }
+    if (node.type === "SECTION") {
+      const section = node;
+      return {
+        id: section.id,
+        name: section.name,
+        type: section.type,
+        x: section.x,
+        y: section.y,
+        width: section.width,
+        height: section.height,
+        parentId: (_a = section.parent) == null ? void 0 : _a.id,
+        explicitVariableModes: (_b = section.explicitVariableModes) != null ? _b : {},
+        children: (_d = (_c = section.children) == null ? void 0 : _c.map((c) => ({ id: c.id, name: c.name, type: c.type }))) != null ? _d : []
+      };
     }
     const response = await node.exportAsync({
       format: "JSON_REST_V1"
@@ -1144,6 +1160,34 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(createFrame, "createFrame");
+  async function createSection(params) {
+    var _a;
+    const {
+      x = 0,
+      y = 0,
+      width = 100,
+      height = 100,
+      name = "Section",
+      parentId
+    } = params || {};
+    const section = figma.createSection();
+    section.x = x;
+    section.y = y;
+    section.resizeWithoutConstraints(width, height);
+    section.name = name;
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(section);
+    return {
+      id: section.id,
+      name: section.name,
+      x: section.x,
+      y: section.y,
+      width: section.width,
+      height: section.height,
+      parentId: (_a = section.parent) == null ? void 0 : _a.id
+    };
+  }
+  __name(createSection, "createSection");
   async function createText(params) {
     var _a, _b, _c, _d, _e;
     const {
@@ -1567,21 +1611,26 @@ The node may have been deleted or the ID is invalid.
   }
   __name(outlineStroke, "outlineStroke");
   async function setImageFill(params) {
-    const { nodeId, imageData, scaleMode = "FILL" } = params || {};
+    const { nodeId, imageData, imageUrl, scaleMode = "FILL" } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
-    if (!imageData) {
-      throw new Error("Missing imageData parameter");
+    if (!imageData && !imageUrl) {
+      throw new Error("Missing imageData or imageUrl parameter");
     }
     const node = await getNodeById(nodeId);
     assertNodeCapability(node, "fills", `Node "${node.name}" does not support fills`);
-    let cleanImageData = imageData;
-    if (imageData.includes(",")) {
-      cleanImageData = imageData.split(",")[1];
+    let image;
+    if (imageUrl) {
+      image = await figma.createImageAsync(imageUrl);
+    } else {
+      let cleanImageData = imageData;
+      if (cleanImageData.includes(",")) {
+        cleanImageData = cleanImageData.split(",")[1];
+      }
+      const bytes = figma.base64Decode(cleanImageData);
+      image = figma.createImage(bytes);
     }
-    const bytes = figma.base64Decode(cleanImageData);
-    const image = figma.createImage(bytes);
     node.fills = [{
       type: "IMAGE",
       scaleMode,
@@ -1596,6 +1645,94 @@ The node may have been deleted or the ID is invalid.
     };
   }
   __name(setImageFill, "setImageFill");
+  async function createImageGrid(params) {
+    const {
+      images,
+      columns = 4,
+      columnWidth = 300,
+      gap = 24,
+      frameName = "Image Grid",
+      x = 0,
+      y = 0,
+      parentId,
+      backgroundColor
+    } = params || {};
+    if (!images || !Array.isArray(images) || images.length === 0) {
+      throw new Error("Missing images array");
+    }
+    const cols = Math.max(1, Math.floor(columns));
+    const frame = figma.createFrame();
+    frame.name = frameName;
+    frame.x = x;
+    frame.y = y;
+    frame.clipsContent = false;
+    if (backgroundColor) {
+      frame.fills = [{
+        type: "SOLID",
+        color: { r: backgroundColor.r, g: backgroundColor.g, b: backgroundColor.b },
+        opacity: backgroundColor.a === void 0 ? 1 : backgroundColor.a
+      }];
+    } else {
+      frame.fills = [];
+    }
+    const parent = await getContainerNode(parentId);
+    parent.appendChild(frame);
+    const failures = [];
+    const loaded = [];
+    const BATCH = 8;
+    for (let start = 0; start < images.length; start += BATCH) {
+      const batch = images.slice(start, start + BATCH);
+      const results = await Promise.all(
+        batch.map(async (item, j) => {
+          const index = start + j;
+          try {
+            const image = await figma.createImageAsync(item.url);
+            const size = await image.getSizeAsync();
+            const w = columnWidth;
+            const h = size.width > 0 ? Math.round(size.height / size.width * columnWidth) : columnWidth;
+            return { index, name: item.name || `image-${index + 1}`, hash: image.hash, w, h };
+          } catch (error) {
+            failures.push({ url: item.url, error: error.message });
+            return null;
+          }
+        })
+      );
+      for (const r of results) {
+        if (r) loaded.push(r);
+      }
+    }
+    loaded.sort((a, b) => a.index - b.index);
+    const colHeights = new Array(cols).fill(0);
+    let placed = 0;
+    for (const img of loaded) {
+      let col = 0;
+      for (let c = 1; c < cols; c++) {
+        if (colHeights[c] < colHeights[col]) col = c;
+      }
+      const rect = figma.createRectangle();
+      rect.name = img.name;
+      rect.resize(img.w, img.h);
+      rect.x = col * (columnWidth + gap);
+      rect.y = colHeights[col];
+      rect.fills = [{ type: "IMAGE", scaleMode: "FILL", imageHash: img.hash }];
+      frame.appendChild(rect);
+      colHeights[col] += img.h + gap;
+      placed++;
+    }
+    const totalWidth = cols * columnWidth + (cols - 1) * gap;
+    const maxColHeight = Math.max(0, ...colHeights.map((hgt) => hgt - gap));
+    frame.resize(Math.max(1, totalWidth), Math.max(1, maxColHeight));
+    provideVisualFeedback(frame, `\u2705 Image grid: ${placed} placed, ${failures.length} failed`);
+    return {
+      success: true,
+      frameId: frame.id,
+      frameName: frame.name,
+      placed,
+      failed: failures.length,
+      failures
+    };
+  }
+  __name(createImageGrid, "createImageGrid");
 
   // src/figma-plugin/handlers/styling.ts
   async function setFillColor(params) {
@@ -2136,7 +2273,13 @@ The node may have been deleted or the ID is invalid.
         throw new Error(`Node type ${node.type} does not support ${field}`);
       }
       const paintNode = node;
-      const paints = [...paintNode[field]];
+      const rawPaints = paintNode[field];
+      let paints;
+      if (rawPaints === figma.mixed || !Array.isArray(rawPaints)) {
+        paints = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true }];
+      } else {
+        paints = [...rawPaints];
+      }
       if (paints.length === 0) {
         paints.push({ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1, visible: true });
       }
@@ -2195,8 +2338,17 @@ The node may have been deleted or the ID is invalid.
     if (!("setBoundVariable" in node)) {
       throw new Error(`Node type ${node.type} does not support variable binding`);
     }
-    const bindableNode = node;
-    bindableNode.setBoundVariable(field, null);
+    const textFields = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "paragraphSpacing", "paragraphIndent"];
+    if (textFields.includes(field)) {
+      if (node.type !== "TEXT") {
+        throw new Error(`Field '${field}' can only be unbound on TEXT nodes, got ${node.type}`);
+      }
+      const textNode = node;
+      textNode.setBoundVariable(field, null);
+    } else {
+      const bindableNode = node;
+      bindableNode.setBoundVariable(field, null);
+    }
     return {
       success: true,
       nodeId,
@@ -2538,6 +2690,45 @@ The node may have been deleted or the ID is invalid.
     return value;
   }
   __name(serializeVariableValue, "serializeVariableValue");
+  async function getExplicitVariableModes(params) {
+    var _a;
+    const { nodeId } = params;
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    const modes = (_a = node.explicitVariableModes) != null ? _a : {};
+    return {
+      nodeId: node.id,
+      name: node.name,
+      type: node.type,
+      explicitVariableModes: modes
+    };
+  }
+  __name(getExplicitVariableModes, "getExplicitVariableModes");
+  async function setExplicitVariableModes(params) {
+    const { nodeId, collectionId, modeId } = params;
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+    const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+    if (!collection) {
+      throw new Error(`Variable collection not found: ${collectionId}`);
+    }
+    if (modeId === null) {
+      node.clearExplicitVariableModeForCollection(collection);
+    } else {
+      node.setExplicitVariableModeForCollection(collection, modeId);
+    }
+    return {
+      success: true,
+      nodeId: node.id,
+      collectionId,
+      modeId
+    };
+  }
+  __name(setExplicitVariableModes, "setExplicitVariableModes");
 
   // src/figma-plugin/handlers/typography.ts
   async function getAvailableFonts(params) {
@@ -6102,6 +6293,8 @@ The node may have been deleted or the ID is invalid.
         return await createRectangle(params);
       case "create_frame":
         return await createFrame(params);
+      case "create_section":
+        return await createSection(params);
       case "create_text":
         return await createText(params);
       case "create_ellipse":
@@ -6124,6 +6317,8 @@ The node may have been deleted or the ID is invalid.
       // Images
       case "set_image_fill":
         return await setImageFill(params);
+      case "create_image_grid":
+        return await createImageGrid(params);
       // Styling
       case "set_fill_color":
         return await setFillColor(params);
@@ -6169,6 +6364,10 @@ The node may have been deleted or the ID is invalid.
         return await bindMultipleVariables(params);
       case "unbind_variable":
         return await unbindVariable(params);
+      case "get_explicit_variable_modes":
+        return await getExplicitVariableModes(params);
+      case "set_explicit_variable_modes":
+        return await setExplicitVariableModes(params);
       // Typography
       case "get_available_fonts":
         return await getAvailableFonts(params);

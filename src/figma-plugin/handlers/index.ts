@@ -28,6 +28,7 @@ import {
 import {
   createRectangle,
   createFrame,
+  createSection,
   createText,
   createEllipse,
   createPolygon,
@@ -38,6 +39,7 @@ import {
   flattenNode,
   outlineStroke,
   setImageFill,
+  createImageGrid,
 } from './creation';
 
 // Styling
@@ -62,6 +64,8 @@ import {
   bindVariable,
   bindMultipleVariables,
   unbindVariable,
+  getExplicitVariableModes,
+  setExplicitVariableModes,
 } from './variables';
 
 // Typography
@@ -219,6 +223,8 @@ export async function handleCommand(
       return await createRectangle(params as CommandParams['create_rectangle']);
     case 'create_frame':
       return await createFrame(params as CommandParams['create_frame']);
+    case 'create_section':
+      return await createSection(params as CommandParams['create_section']);
     case 'create_text':
       return await createText(params as CommandParams['create_text']);
     case 'create_ellipse':
@@ -243,6 +249,8 @@ export async function handleCommand(
     // Images
     case 'set_image_fill':
       return await setImageFill(params as CommandParams['set_image_fill']);
+    case 'create_image_grid':
+      return await createImageGrid(params as CommandParams['create_image_grid']);
 
     // Styling
     case 'set_fill_color':
@@ -291,6 +299,10 @@ export async function handleCommand(
       return await bindMultipleVariables(params as CommandParams['bind_multiple_variables']);
     case 'unbind_variable':
       return await unbindVariable(params as CommandParams['unbind_variable']);
+    case 'get_explicit_variable_modes':
+      return await getExplicitVariableModes(params as CommandParams['get_explicit_variable_modes']);
+    case 'set_explicit_variable_modes':
+      return await setExplicitVariableModes(params as CommandParams['set_explicit_variable_modes']);
 
     // Typography
     case 'get_available_fonts':

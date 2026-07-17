@@ -11,8 +11,9 @@
   "permissions": [],
   "networkAccess": {
     "allowedDomains": [
-      "https://google.com"
+      "*"
     ],
+    "reasoning": "Fetches user-supplied image URLs (e.g. Are.na CDN) to place them into the Figma document via createImageAsync.",
     "devAllowedDomains": [
       "http://localhost:3055",
       "ws://localhost:3055"

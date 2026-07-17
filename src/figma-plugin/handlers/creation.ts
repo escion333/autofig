@@ -221,6 +221,40 @@ export async function createFrame(params: CommandParams['create_frame']): Promis
 }
 
 /**
+ * Create a native Figma Section node (organisational container for developer handoff)
+ */
+export async function createSection(params: CommandParams['create_section']): Promise<NodeResult> {
+  const {
+    x = 0,
+    y = 0,
+    width = 100,
+    height = 100,
+    name = 'Section',
+    parentId,
+  } = params || {};
+
+  const section = figma.createSection();
+  section.x = x;
+  section.y = y;
+  section.resizeWithoutConstraints(width, height);
+  section.name = name;
+
+  // Append to parent or current page
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(section);
+
+  return {
+    id: section.id,
+    name: section.name,
+    x: section.x,
+    y: section.y,
+    width: section.width,
+    height: section.height,
+    parentId: section.parent?.id,
+  };
+}
+
+/**
  * Create a text node
  */
 export async function createText(params: CommandParams['create_text']): Promise<NodeResult> {
@@ -772,30 +806,36 @@ export async function setImageFill(params: CommandParams['set_image_fill']): Pro
   nodeName: string;
   scaleMode: string;
 }> {
-  const { nodeId, imageData, scaleMode = 'FILL' } = params || {};
+  const { nodeId, imageData, imageUrl, scaleMode = 'FILL' } = params || {};
 
   if (!nodeId) {
     throw new Error('Missing nodeId parameter');
   }
 
-  if (!imageData) {
-    throw new Error('Missing imageData parameter');
+  if (!imageData && !imageUrl) {
+    throw new Error('Missing imageData or imageUrl parameter');
   }
 
   const node = await getNodeById(nodeId);
   assertNodeCapability(node, 'fills', `Node "${node.name}" does not support fills`);
 
-  // Remove data URL prefix if present
-  let cleanImageData = imageData;
-  if (imageData.includes(',')) {
-    cleanImageData = imageData.split(',')[1];
+  // Create the image — from a URL (fetched by the plugin) or from base64 bytes
+  let image: Image;
+  if (imageUrl) {
+    image = await figma.createImageAsync(imageUrl);
+  } else {
+    // Remove data URL prefix if present
+    let cleanImageData = imageData as string;
+    if (cleanImageData.includes(',')) {
+      cleanImageData = cleanImageData.split(',')[1];
+    }
+
+    // Decode base64 to Uint8Array using Figma's base64Decode
+    const bytes = figma.base64Decode(cleanImageData);
+
+    // Create the image
+    image = figma.createImage(bytes);
   }
-
-  // Decode base64 to Uint8Array using Figma's base64Decode
-  const bytes = figma.base64Decode(cleanImageData);
-
-  // Create the image
-  const image = figma.createImage(bytes);
 
   // Apply the image fill
   (node as GeometryMixin).fills = [{
@@ -812,5 +852,127 @@ export async function setImageFill(params: CommandParams['set_image_fill']): Pro
     nodeId: node.id,
     nodeName: node.name,
     scaleMode,
+  };
+}
+
+/**
+ * Create a masonry grid of images, each fetched from a URL by the plugin.
+ * Images keep their aspect ratio; each is scaled to a fixed column width and
+ * placed in the shortest column. Returns the container frame plus per-image results.
+ */
+export async function createImageGrid(params: CommandParams['create_image_grid']): Promise<{
+  success: boolean;
+  frameId: string;
+  frameName: string;
+  placed: number;
+  failed: number;
+  failures: Array<{ url: string; error: string }>;
+}> {
+  const {
+    images,
+    columns = 4,
+    columnWidth = 300,
+    gap = 24,
+    frameName = 'Image Grid',
+    x = 0,
+    y = 0,
+    parentId,
+    backgroundColor,
+  } = params || {};
+
+  if (!images || !Array.isArray(images) || images.length === 0) {
+    throw new Error('Missing images array');
+  }
+
+  const cols = Math.max(1, Math.floor(columns));
+
+  // Container frame
+  const frame = figma.createFrame();
+  frame.name = frameName;
+  frame.x = x;
+  frame.y = y;
+  frame.clipsContent = false;
+  if (backgroundColor) {
+    frame.fills = [{
+      type: 'SOLID',
+      color: { r: backgroundColor.r, g: backgroundColor.g, b: backgroundColor.b },
+      opacity: backgroundColor.a === undefined ? 1 : backgroundColor.a,
+    }];
+  } else {
+    frame.fills = [];
+  }
+
+  const parent = await getContainerNode(parentId);
+  parent.appendChild(frame);
+
+  const failures: Array<{ url: string; error: string }> = [];
+
+  // Phase 1: fetch all images in parallel batches (network-bound — batching keeps
+  // wall time low without opening hundreds of sockets at once).
+  type Loaded = { index: number; name: string; hash: string; w: number; h: number };
+  const loaded: Loaded[] = [];
+  const BATCH = 8;
+  for (let start = 0; start < images.length; start += BATCH) {
+    const batch = images.slice(start, start + BATCH);
+    const results = await Promise.all(
+      batch.map(async (item, j) => {
+        const index = start + j;
+        try {
+          const image = await figma.createImageAsync(item.url);
+          const size = await image.getSizeAsync();
+          const w = columnWidth;
+          const h = size.width > 0
+            ? Math.round((size.height / size.width) * columnWidth)
+            : columnWidth;
+          return { index, name: item.name || `image-${index + 1}`, hash: image.hash, w, h } as Loaded;
+        } catch (error) {
+          failures.push({ url: item.url, error: (error as Error).message });
+          return null;
+        }
+      })
+    );
+    for (const r of results) {
+      if (r) loaded.push(r);
+    }
+  }
+
+  // Preserve original channel order
+  loaded.sort((a, b) => a.index - b.index);
+
+  // Phase 2: masonry layout — place each image in the shortest column.
+  const colHeights = new Array(cols).fill(0);
+  let placed = 0;
+  for (const img of loaded) {
+    let col = 0;
+    for (let c = 1; c < cols; c++) {
+      if (colHeights[c] < colHeights[col]) col = c;
+    }
+
+    const rect = figma.createRectangle();
+    rect.name = img.name;
+    rect.resize(img.w, img.h);
+    rect.x = col * (columnWidth + gap);
+    rect.y = colHeights[col];
+    rect.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: img.hash }];
+    frame.appendChild(rect);
+
+    colHeights[col] += img.h + gap;
+    placed++;
+  }
+
+  // Size the frame to fit the placed content
+  const totalWidth = cols * columnWidth + (cols - 1) * gap;
+  const maxColHeight = Math.max(0, ...colHeights.map((hgt) => hgt - gap));
+  frame.resize(Math.max(1, totalWidth), Math.max(1, maxColHeight));
+
+  provideVisualFeedback(frame, `✅ Image grid: ${placed} placed, ${failures.length} failed`);
+
+  return {
+    success: true,
+    frameId: frame.id,
+    frameName: frame.name,
+    placed,
+    failed: failures.length,
+    failures,
   };
 }

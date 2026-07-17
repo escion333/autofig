@@ -113,6 +113,23 @@ export async function getNodeInfo(params: CommandParams['get_node_info']) {
     );
   }
 
+  // SECTION nodes don't support JSON_REST_V1 export — return safe properties manually
+  if (node.type === 'SECTION') {
+    const section = node as SectionNode;
+    return {
+      id: section.id,
+      name: section.name,
+      type: section.type,
+      x: section.x,
+      y: section.y,
+      width: section.width,
+      height: section.height,
+      parentId: section.parent?.id,
+      explicitVariableModes: (section as any).explicitVariableModes ?? {},
+      children: section.children?.map((c) => ({ id: c.id, name: c.name, type: c.type })) ?? [],
+    };
+  }
+
   const response = await (node as any).exportAsync({
     format: 'JSON_REST_V1',
   });
